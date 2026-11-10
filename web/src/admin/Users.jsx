@@ -3,17 +3,23 @@ import { api } from '../api.js';
 import { dt, etb, txLabel, txSign } from '../format.js';
 import { useToast } from '../components/Toast.jsx';
 
-export default function Users({ token }) {
+export default function Users({ token, phoneFilter, onPhoneFilterChange }) {
   const [rows, setRows] = useState([]);
   const [search, setSearch] = useState('');
   const [detail, setDetail] = useState(null);
   const [adjust, setAdjust] = useState({ amount: '', reason: '' });
   const [busy, setBusy] = useState(false);
+  const [requestingPhone, setRequestingPhone] = useState(false);
   const toast = useToast();
 
-  async function load(query = search) {
+  async function load(query = search, filter = phoneFilter) {
     try {
-      setRows(await api(`/api/admin/users?search=${encodeURIComponent(query)}`, { token }));
+      setRows(
+        await api(
+          `/api/admin/users?search=${encodeURIComponent(query)}&phoneStatus=${encodeURIComponent(filter)}`,
+          { token },
+        ),
+      );
     } catch (err) {
       toast(err.message, 'error');
     }
@@ -56,6 +62,25 @@ export default function Users({ token }) {
     }
   }
 
+  async function requestPhone(user) {
+    setRequestingPhone(true);
+    try {
+      const result = await api(`/api/admin/users/${user.id}/request-phone`, {
+        token,
+        method: 'POST',
+      });
+      toast(
+        result.simulated
+          ? 'Telegram bot is not configured, so the request was only logged.'
+          : 'Phone number requested on Telegram.',
+      );
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      setRequestingPhone(false);
+    }
+  }
+
   async function submitAdjust(event) {
     event.preventDefault();
     if (!detail) return;
@@ -94,6 +119,18 @@ export default function Users({ token }) {
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search name, phone, username or Telegram ID"
             />
+            <select
+              value={phoneFilter}
+              onChange={(event) => {
+                onPhoneFilterChange(event.target.value);
+                load(search, event.target.value);
+              }}
+              aria-label="Filter by phone number"
+            >
+              <option value="all">All players</option>
+              <option value="missing">No phone number</option>
+              <option value="registered">Phone registered</option>
+            </select>
             <button type="submit" className="btn ghost small">
               Search
             </button>
@@ -201,6 +238,16 @@ export default function Users({ token }) {
             <div>
               <span className="muted small">Phone</span>
               <strong>{detail.user.phone || '—'}</strong>
+              {!detail.user.phone && (
+                <button
+                  type="button"
+                  className="link-btn"
+                  disabled={requestingPhone}
+                  onClick={() => requestPhone(detail.user)}
+                >
+                  Request on Telegram
+                </button>
+              )}
             </div>
             <div>
               <span className="muted small">Telegram ID</span>

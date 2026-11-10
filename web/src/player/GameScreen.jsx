@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { etb, seconds } from '../format.js';
 import { COLUMNS, RANGES, callLabel } from '../bingo.js';
+import { speakCall, stopSpeaking } from '../voice.js';
 
 
 function countdown(ms) {
@@ -54,16 +55,18 @@ function WinnerOverlay({ game, you }) {
           {winners.map((winner, index) => {
             const lineSet = new Set((winner.line || []).map(([col, row]) => `${col}-${row}`));
             return (
-              <div className="wc-winner" key={`${winner.name}-${winner.phone4}-${index}`}>
+              <div className="wc-winner" key={`${winner.name}-${winner.phoneMasked || winner.phone4}-${index}`}>
                 {winners.length > 1 && (
                   <div className="wc-winner-head">
                     <span className="wc-winner-tag">አሸናፊ {index + 1}</span>
                   </div>
                 )}
-                <div className="wc-name">
-                  {winner.name}
-                  {winner.phone4 ? <span> · {winner.phone4}</span> : null}
-                </div>
+                <div className="wc-name">{winner.name}</div>
+                {(winner.phoneMasked || winner.phone4) && (
+                  <span className="wc-phone">
+                    {winner.phoneMasked || `+251*****${winner.phone4}`}
+                  </span>
+                )}
 
                 {winner.card ? (
                   <>
@@ -115,14 +118,15 @@ export default function GameScreen({
   you,
   me,
   stake,
-  onJoin,
+  onPick,
   onClaim,
   busy,
   voiceOn,
   onToggleVoice,
   voiceAvailable,
+  maxCards: maxCardsProp,
 }) {
-  const [cards, setCards] = useState(1);
+  const maxCards = Math.max(1, Math.min(432, Math.floor(Number(maxCardsProp) || 432)));
   const [voiceFiles, setVoiceFiles] = useState({});
   const lastPlayed = useRef(null);
   const audioRef = useRef(null);
@@ -148,21 +152,57 @@ export default function GameScreen({
     if (lastPlayed.current === `${game.id}:${game.lastCalled}`) return;
     lastPlayed.current = `${game.id}:${game.lastCalled}`;
     const url = voiceFiles[`num_${game.lastCalled}`];
-    if (!url) return;
-    try {
-      audioRef.current?.pause();
-      audioRef.current = new Audio(url);
-      audioRef.current.play().catch(() => {});
-    } catch {
-      /* autoplay may be blocked until first interaction */
+    if (url) {
+      try {
+        audioRef.current?.pause();
+        stopSpeaking();
+        audioRef.current = new Audio(url);
+        audioRef.current.play().catch(() => {});
+      } catch {
+        /* autoplay may be blocked until first interaction */
+      }
+    } else {
+      // No recording for this number: speak the Amharic call instead.
+      speakCall(game.lastCalled);
     }
   }, [game?.lastCalled, game?.id, voiceOn, voiceAvailable, voiceFiles]);
 
-  const canJoin = !you && game?.status === 'WAITING';
-  const totalPrice = (game?.stake || stake || 0) * cards;
+  useEffect(() => {
+    if (voiceOn) return;
+    try {
+      audioRef.current?.pause();
+    } catch {
+      /* ignore */
+    }
+    stopSpeaking();
+  }, [voiceOn]);
+
+  useEffect(
+    () => () => {
+      try {
+        audioRef.current?.pause();
+      } catch {
+        /* ignore */
+      }
+      stopSpeaking();
+    },
+    [],
+  );
+
   const isWaiting = game?.status === 'WAITING';
   const isCalling = game?.status === 'CALLING';
   const ended = game?.status === 'ENDED';
+  const selectionMs = game?.selectionEndsInMs ?? game?.startsInMs ?? 0;
+  const windowOpen = isWaiting && selectionMs > 0;
+  const mySlots = you?.slots || [];
+  const mySlotSet = new Set(mySlots);
+  const takenSet = useMemo(() => new Set(game?.takenCards || []), [game?.takenCards]);
+  const perCard = game?.stake || stake || 0;
+  const spent = you?.spent || 0;
+  const feeRate = Math.min(1, Math.max(0, Number(me?.config?.platformFeeRate ?? 0.2)));
+  // Pool already includes what this player paid, so the estimate is the pool
+  // plus the next card's net contribution.
+  const estimatedWin = Math.floor((game?.prizePool || 0) + perCard * (1 - feeRate));
 
   return (
     <div className="game-screen">
@@ -224,8 +264,13 @@ export default function GameScreen({
         <div className="join-panel">
           <div className="join-head">
             <div>
-              <p className="eyebrow">የመግቢያ ክፍያ በካርድ {etb(game?.stake)} ETB</p>
-              <h2>ቀጣዩ ዙር በ {countdown(game?.startsInMs)} ይጀምራል</h2>
+              <p className="eyebrow">እያንዳንዱ ካርድ {etb(perCard)} ETB · 1 – {maxCards}</p>
+              <h2>
+                {windowOpen
+                  ? `የመምረጫ ጊዜ በ ${countdown(selectionMs)}`
+                  : 'የመምረጫ ጊዜው አልቋል — ጥሪው ይጀምራል'
+                }
+              </h2>
             </div>
             <div className="pool-badge">
               <span>የሽልማት ገንዘብ</span>
@@ -233,34 +278,58 @@ export default function GameScreen({
             </div>
           </div>
 
-          {!you ? (
-            <>
-              <div className="card-picker">
-                {[1, 2, 3].map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    className={`pick ${cards === n ? 'active' : ''}`}
-                    onClick={() => setCards(n)}
-                  >
-                    <strong>{n}</strong>
-                    <span>{n > 1 ? 'ካርዶች' : 'ካርድ'}</span>
-                  </button>
-                ))}
+          <div className="picks-summary">
+            <div>
+              <span>የመረጡት</span>
+              <strong>{mySlots.length}</strong>
+            </div>
+            <div>
+              <span>የወጣ</span>
+              <strong>{etb(spent)} ETB</strong>
+            </div>
+            <div className="win">
+              <span>የሚገመት ሽልማት</span>
+              <strong>{etb(estimatedWin)} ETB</strong>
+            </div>
+          </div>
+
+          {windowOpen ? (
+            <div className="card-picker-wrap">
+              <div className="picker-head">
+                <h4>የካርድ ቁጥር ይምረጡ</h4>
+                <span>{mySlots.length ? `${mySlots.length} ተመርጠዋል` : 'ካርድ ይግዙ'}</span>
               </div>
-              <button
-                type="button"
-                className="btn primary big"
-                disabled={busy || !canJoin}
-                onClick={() => onJoin(cards)}
-              >
-                {busy ? 'በመቀላቀል ላይ…' : `ዙሩን ተቀላቀሉ — ${etb(totalPrice)} ETB`}
-              </button>
-              <p className="fine-print amharic">ቀሪ ሂሳብ፦ {etb(me?.balance)} ETB</p>
-            </>
+              <div className="card-picker" role="group" aria-label="የካርድ ቁጥሮች 1 እስከ 432">
+                {Array.from({ length: maxCards }, (_, i) => i + 1).map((slot) => {
+                  const mine = mySlotSet.has(slot);
+                  const taken = takenSet.has(slot) && !mine;
+                  return (
+                    <button
+                      key={slot}
+                      type="button"
+                      className={`pick-cell ${mine ? 'mine' : ''} ${taken ? 'taken' : ''}`}
+                      disabled={taken || busy}
+                      onClick={() => onPick(slot)}
+                      aria-label={taken ? `ካርድ ${slot} ተመርጧል` : `ካርድ ${slot} ይግዙ`}
+                    >
+                      {slot}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="fine-print amharic">
+                ካርድ ሲመርጡ ወዲያውኑ {etb(perCard)} ETB ከቀሪ ሂሳብዎ ይቀንሳል። አንድ ቁጥር አንድ ጊዜ ብቻ ይመረጣል። ቀሪ ሂሳብ፦{' '}
+                {etb(me?.user?.balance)} ETB
+              </p>
+              {you && (
+                <div className="waiting-note amharic">
+                  <span className="pulse-dot" /> ተቀላቅለዋል። ተጨማሪ ካርድ መምረጥ ይችላሉ — ጊዜው እስኪያልቅ።
+                </div>
+              )}
+            </div>
           ) : (
             <div className="waiting-note amharic">
-              <span className="pulse-dot" /> ተቀላቅለዋል። ቁጥሮች በራስ-ሰር ይጠራሉ።
+              <span className="pulse-dot" /> የመምረጫ ጊዜው አልቋል። ካርዶችዎ ከዚህ በታች ይታያሉ — ጥሪው ይጀምራል።
             </div>
           )}
         </div>
@@ -280,6 +349,9 @@ export default function GameScreen({
               </button>
               <div className="call-timer amharic">
                 ቀጣዩ ቁጥር በ <strong>{seconds(game?.nextCallInMs)} ሰከንድ</strong>
+                <span className="bingo-hint">
+                  መግቢያ {etb(you.spent || 0)} ETB · ሽልማት {etb(game?.prizePool)} ETB
+                </span>
                 {you.hasBingo && <span className="bingo-hint">መስመር ሙሉ ነው — ይጠይቁ!</span>}
                 {you.blocked && <span className="blocked-hint">የተሳሳተ ጥያቄ። በዚህ ዙር ማመልከት አይችሉም።</span>}
               </div>
@@ -292,7 +364,7 @@ export default function GameScreen({
         </div>
       )}
 
-      {you?.cards?.length > 0 && (
+      {you?.cards?.length > 0 && !windowOpen && (
         <section className="my-cards">
           <div className="section-title">
             <h3>የእኔ {you.cards.length > 1 ? 'ካርዶች' : 'ካርድ'}</h3>
@@ -326,7 +398,7 @@ export default function GameScreen({
                       })}
                     </div>
                   ))}
-                  <div className="bingo-card-foot">ካርድ {index + 1}</div>
+                  <div className="bingo-card-foot">ካርድ #{you.slots?.[index] ?? index + 1}</div>
                 </div>
               );
             })}

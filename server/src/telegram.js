@@ -175,6 +175,30 @@ export function stopTelegramBot() {
 }
 
 /**
+ * Ask a single player to share their phone number again. Uses the same contact
+ * button as the welcome flow, so the reply is stored by handleContact.
+ */
+export async function requestPhoneFromUser(telegramId) {
+  if (!/^-?\d+$/.test(String(telegramId || ''))) {
+    throw new Error('This player has no Telegram chat to message.');
+  }
+  if (!BOT_TOKEN) return { sent: false, simulated: true };
+
+  await telegramApi('sendMessage', {
+    chat_id: String(telegramId),
+    text:
+      'የስልክ ቁጥርዎን እንደገና ያጋሩ። ከታች ያለውን አዝራር ይጫኑ።\n\n' +
+      'Please share your phone number to finish registration. Tap the button below.',
+    reply_markup: {
+      keyboard: [[{ text: '📱 Share phone number / ስልክ ቁጥር አጋራ', request_contact: true }]],
+      resize_keyboard: true,
+      one_time_keyboard: true,
+    },
+  });
+  return { sent: true, simulated: false };
+}
+
+/**
  * Broadcast an ad / announcement through the Telegram bot. When no bot token is
  * configured the broadcast is recorded as simulated so it can be tested locally.
  */

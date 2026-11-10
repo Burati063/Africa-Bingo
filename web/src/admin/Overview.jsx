@@ -55,6 +55,11 @@ export default function Overview({ token, onNavigate }) {
         <Stat label="Net revenue" value={money(t.netRevenue)} hint="Fees − agent commissions" tone="green" />
         <Stat label="Prize payouts" value={money(t.winPayouts)} hint="Paid to players" />
         <Stat label="Players" value={t.players.toLocaleString()} hint={`+${t.newUsersWeek} this week`} />
+        <Stat
+          label="Missing phone numbers"
+          value={t.missingPhones.toLocaleString()}
+          hint="Players who have not registered a phone"
+        />
         <Stat label="Active players" value={`${data.active.daily} / ${data.active.weekly} / ${data.active.monthly}`} hint="Daily / weekly / monthly" />
         <Stat label="Rounds played" value={data.gameStats.rounds.toLocaleString()} hint={`Avg stake ${etb(data.gameStats.avgStake)} ETB`} />
         <Stat label="Biggest win" value={money(data.gameStats.biggestWin)} hint={`Avg players/round ${data.gameStats.avgPlayers.toFixed(1)}`} />

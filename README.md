@@ -109,9 +109,13 @@ npm start          # http://localhost:4000
 - Bots join each round per admin setting (0–50), with random names and cards. They claim with a
   1.5–4 s human-like delay. With a forced human winner, bots are held until that player claims (or
   the deck runs out).
+- Card numbers are **1–432**. A player picks specific numbers during the 30-second waiting window
+  and each pick costs 20 ETB (the configured stake), charged immediately and atomically. A number
+  can only be bought once per round by anyone, and a player may buy as many numbers as they can
+  afford until the window closes.
 - If no real player holds a line, the round ends with no cash payout (stakes remain platform
-  revenue). Multi-card purchases (1–3) are supported.
-- All stakes are deducted atomically before a player joins; if the server restarts mid-round the
+  revenue).
+- All picks are deducted atomically before a card is assigned; if the server restarts mid-round the
   engine **refunds every real stake** from the interrupted round.
 
 Money is stored as **integer santim** (1 ETB = 100 santim) everywhere.
@@ -120,11 +124,11 @@ Money is stored as **integer santim** (1 ETB = 100 santim) everywhere.
 
 ## 4. Player Mini App
 
-- **Top bar:** balance, wins today, Derash points, players, stake, current call, prize pool.
+- **Top bar:** balance, Derash points, players, stake per card, current call.
 - **B I N G O master board:** every called number, latest call highlighted.
 - **Cards:** auto-marked, horizontally scrollable for multi-card purchases.
-- **Actions:** join with 1–3 cards, big Bingo! claim button, waiting/next-round countdowns, winner
-  banner.
+- **Actions:** pick numbered cards 1–432 (tap = buy that number for 20 ETB), live spent/prize
+  estimate before the call, big Bingo! claim button, 30-second selection countdown, winner banner.
 - **Wallet:** available balance, transaction history (with the exact empty state copy), Telebirr and
   CBE deposit methods with the exact Amharic instructions, then receipt-link verification.
 - **Withdrawal:** the exact Amharic manual-withdrawal notice, amount, bank, account number, holder
@@ -244,7 +248,7 @@ All authenticated routes use `Authorization: Bearer <JWT>`.
 |---|---|
 | GET | `/api/me` (user, agent info, config, wins today, pending items) |
 | GET | `/api/game/state` (public state + your cards) |
-| POST | `/api/game/join` `{cards:1..3}` |
+| POST | `/api/game/join` `{cards:[1..432]}` (one entry = one 20 ETB pick) |
 | POST | `/api/game/claim` |
 | GET | `/api/game/history` |
 | GET | `/api/wallet/transactions` · `/wallet/deposits` · `/wallet/withdrawals` |
@@ -317,6 +321,9 @@ Socket.IO Redis adapter + a shared store; stake/win movements are already transa
 
 ## 12. Docker deployment
 
+See **[DEPLOY.md](./DEPLOY.md)** for the full production roadmap (VPS, HTTPS, Telegram setup,
+backups, monitoring and scale path). Quick version:
+
 ```bash
 cp server/.env.example .env   # fill in real secrets
 docker compose up --build -d
@@ -334,7 +341,9 @@ HTTPS for Mini Apps.
 
 Admins upload static recordings per number (`num_1`…`num_75`) or announcement (`bingo`,
 `game_start`) in **Game Control → Voice files**. The player app maps the last called number to
-`num_<n>` and plays it when voice is on. No TTS is used. Uploads accept mp3/ogg/wav/m4a up to 5 MB
+`num_<n>` and plays it when voice is on. When a number has no uploaded recording, the browser
+speaks the call itself in Amharic (`am-ET`) via the Web Speech API, so voice works out of the box.
+Uploads accept mp3/ogg/wav/m4a up to 5 MB
 and are stored in `server/uploads/voice`, served from `/uploads/voice/...`. The repository ships with
 no audio assets — record the Amharic numbers once and upload them.
 

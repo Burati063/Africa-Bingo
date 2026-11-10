@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../api.js';
 import { dt, etb, etbShort } from '../format.js';
 import StaffLogin from '../components/StaffLogin.jsx';
+import Logo from '../components/Logo.jsx';
 import { useToast } from '../components/Toast.jsx';
 
 const TOKEN_KEY = 'bingo_agent_token';
@@ -170,7 +171,7 @@ export default function AgentApp() {
     <div className="dashboard-shell agent-shell">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <div className="brand-mark small">B</div>
+          <Logo size={38} />
           <div>
             <strong>Africa Bingo</strong>
             <span>Agent Dashboard</span>

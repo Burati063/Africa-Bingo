@@ -2,10 +2,14 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { api } from '../api.js';
+import { etb } from '../format.js';
 import { haptic, tg } from '../telegram.js';
 import { useToast } from '../components/Toast.jsx';
 import TopBar from './TopBar.jsx';
 import GameScreen from './GameScreen.jsx';
+import WalletScreen from './WalletScreen.jsx';
+import WithdrawScreen from './WithdrawScreen.jsx';
+import Logo from '../components/Logo.jsx';
 
 const TOKEN_KEY = 'bingo_player_token';
 
@@ -16,6 +20,7 @@ export default function PlayerApp() {
   const [you, setYou] = useState(null);
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [view, setView] = useState('game');
   const [authError, setAuthError] = useState('');
   const [voiceOn, setVoiceOn] = useState(() => localStorage.getItem('bingo_voice') !== 'off');
   const toast = useToast();
@@ -155,6 +160,12 @@ export default function PlayerApp() {
     return () => socket.disconnect();
   }, [token, refreshMe, toast]);
 
+  const navigate = (next) => {
+    setView(next);
+    haptic('light');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const toggleVoice = () => {
     const next = !voiceOn;
     setVoiceOn(next);
@@ -179,12 +190,17 @@ export default function PlayerApp() {
     }
   }, [token, refreshing, refreshMe, toast]);
 
-  async function join(cards) {
+  async function pickCard(slot) {
+    if (busy) return;
     setBusy(true);
     try {
-      const result = await api('/api/game/join', { token, method: 'POST', body: { cards } });
-      setYou({ cards: result.cards, playerId: result.playerId, roundId: game?.id, hasBingo: false, blocked: false });
-      toast('ዙሩን ተቀላቅለዋል። መልካም እድል! 🍀');
+      const result = await api('/api/game/join', {
+        token,
+        method: 'POST',
+        body: { cards: [slot] },
+      });
+      if (result.you) setYou(result.you);
+      toast(`ካርድ #${slot} ተግዝቷል — ${etb(game?.stake || me?.config?.stake)} ETB`);
       haptic('success');
       await refreshMe();
     } catch (err) {
@@ -219,7 +235,7 @@ export default function PlayerApp() {
     return (
       <div className="center-screen">
         <div className="fatal-card">
-          <div className="brand-mark">AB</div>
+          <Logo size={64} />
           <h1>Africa Bingo</h1>
           <p>{authError}</p>
           <p className="muted small amharic">
@@ -236,47 +252,72 @@ export default function PlayerApp() {
   if (!me) {
     return (
       <div className="center-screen">
-        <div className="loader">
-          <div className="brand-mark">AB</div>
-          <p>Africa Bingo በመጫን ላይ…</p>
+        <div className="loader branded-loader">
+          <Logo size={84} />
+          <strong className="loader-name">AFRICA BINGO</strong>
+          <p className="amharic">አፍሪቃ ቢንጎ በመጫን ላይ…</p>
+          <span className="loader-bar"><span /></span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className={`player-shell ${me.agent ? 'with-nav' : ''}`}>
-      <TopBar me={me} game={game} onRefresh={refreshGame} refreshing={refreshing} />
+    <div className="player-shell with-nav">
+      <TopBar
+        me={me}
+        game={game}
+        onRefresh={refreshGame}
+        refreshing={refreshing}
+        view={view}
+        onNavigate={navigate}
+      />
 
       {me.user?.isBanned && (
         <div className="banned-banner amharic">ይህ መለያ ታግዷል። እባክዎ በቴሌግራም ድጋፍን ያግኙ።</div>
       )}
 
       <main className="player-main">
-        <GameScreen
-          game={game}
-          you={you}
-          me={me}
-          stake={me.config?.stake}
-          onJoin={join}
-          onClaim={claim}
-          busy={busy}
-          voiceOn={voiceOn}
-          onToggleVoice={toggleVoice}
-          voiceAvailable={me?.config?.voiceEnabled !== false}
-        />
+        {view !== 'game' && (
+          <button type="button" className="back-btn amharic" onClick={() => navigate('game')}>
+            ← ጨዋታው ይመለሱ
+          </button>
+        )}
+        {view === 'game' && (
+          <GameScreen
+            game={game}
+            you={you}
+            me={me}
+            stake={me.config?.stake}
+            onPick={pickCard}
+            onClaim={claim}
+            busy={busy}
+            voiceOn={voiceOn}
+            onToggleVoice={toggleVoice}
+            voiceAvailable={me?.config?.voiceEnabled !== false}
+            maxCards={me?.config?.maxCards || 432}
+          />
+        )}
+        {view === 'wallet' && <WalletScreen me={me} token={token} refreshMe={refreshMe} />}
+        {view === 'withdraw' && <WithdrawScreen me={me} token={token} refreshMe={refreshMe} />}
       </main>
 
-      {me.agent && (
-        <nav className="bottom-nav">
-          <button type="button" className="active">
-            <span>🎱</span>ጨዋታ
-          </button>
+      <nav className="bottom-nav">
+        <button type="button" className={view === 'game' ? 'active' : ''} onClick={() => navigate('game')}>
+          <span>🎱</span>ጨዋታ
+        </button>
+        <button type="button" className={view === 'wallet' ? 'active' : ''} onClick={() => navigate('wallet')}>
+          <span>💳</span>አስገባ
+        </button>
+        <button type="button" className={view === 'withdraw' ? 'active' : ''} onClick={() => navigate('withdraw')}>
+          <span>📤</span>ወጪ
+        </button>
+        {me.agent && (
           <Link to="/agent" className="nav-link">
             <span>🤝</span>ወኪል
           </Link>
-        </nav>
-      )}
+        )}
+      </nav>
     </div>
   );
 }

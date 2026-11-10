@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api.js';
+import Logo from './Logo.jsx';
 
 export default function StaffLogin({ title, subtitle, expectedRole = 'admin', onLogin, alternate }) {
   const [email, setEmail] = useState('');
@@ -32,7 +33,7 @@ export default function StaffLogin({ title, subtitle, expectedRole = 'admin', on
   return (
     <div className="staff-login">
       <div className="staff-login-card">
-        <div className="brand-mark">B</div>
+        <Logo size={58} />
         <h1>{title}</h1>
         <p className="muted">{subtitle}</p>
         <form onSubmit={submit}>

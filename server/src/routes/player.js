@@ -4,7 +4,7 @@ import { prisma } from '../db.js';
 import { requirePlayer } from '../auth.js';
 import { asyncHandler, AppError } from '../util.js';
 import { getSettings } from '../settings.js';
-import { getStateForUser, joinRound, claimBingo } from '../engine.js';
+import { MAX_CARDS, getStateForUser, joinRound, claimBingo } from '../engine.js';
 import { BANKS, requestWithdrawal, verifyDeposit } from '../wallet.js';
 import { verifyReceiptDeposit } from '../receipt-deposits.js';
 import { setSetting } from '../settings.js';
@@ -72,6 +72,7 @@ router.get(
         receiptVerification: String(settings.receiptAllowed) === '1',
         smsEnabled: String(settings.smsAllowed) === '1',
         banks: BANKS,
+        maxCards: MAX_CARDS,
       },
     });
   }),

@@ -5,15 +5,11 @@ import { parsePaymentSms } from './payments.js';
 import { emitToUser } from './realtime.js';
 import { onDepositVerified } from './agents.js';
 
-// Wallets plus every commercial bank licensed in Ethiopia (NBE register).
+// Payment / payout destinations currently supported by the platform.
+// Unsupported banks and wallets have been removed from the list on purpose.
 export const BANKS = [
   'Telebirr',
-  'CBE Birr',
-  'M-Pesa',
-  'Amole',
-  'HelloCash',
   'Commercial Bank of Ethiopia (CBE)',
-  'Development Bank of Ethiopia',
   'Awash Bank',
   'Dashen Bank',
   'Bank of Abyssinia',
@@ -21,30 +17,15 @@ export const BANKS = [
   'Wegagen Bank',
   'Nib International Bank',
   'Cooperative Bank of Oromia',
-  'Lion International Bank',
-  'Zemen Bank',
-  'Oromia Bank',
   'Bunna Bank',
   'Berhan Bank',
   'Abay Bank',
-  'Addis International Bank',
-  'Global Bank Ethiopia',
-  'Enat Bank',
-  'Bank of Addis',
   'Amhara Bank',
   'Tsehay Bank',
   'Gadaa Bank',
   'Siinqee Bank',
-  'Hijra Bank',
-  'ZamZam Bank',
   'Ahadu Bank',
   'Tsedey Bank',
-  'Goh Betoch Bank',
-  'Rammis Bank',
-  'Shabelle Bank',
-  'Omo Bank',
-  'Sidama Bank',
-  'Anbesa Bank',
 ];
 
 async function pushBalance(userId) {

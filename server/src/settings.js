@@ -8,7 +8,7 @@ import { prisma } from './db.js';
 export const DEFAULT_SETTINGS = {
   stake: '2000', // 20 ETB entry fee
   botCount: '8',
-  waitSeconds: '20',
+  waitSeconds: '30', // card selection window
   callIntervalMs: '3000',
   roundEndDelayMs: '8000',
   platformFeeRate: '0.2',

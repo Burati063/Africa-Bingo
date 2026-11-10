@@ -1,18 +1,40 @@
 import { prisma } from './db.js';
 import { dayKey, daysAgo } from './util.js';
 
+/**
+ * Prisma filter for the admin phone-registration filter. A phone counts as
+ * missing when it is null or blank.
+ */
+export function phoneStatusWhere(status) {
+  const value = String(status || 'all').trim().toLowerCase();
+  if (value === 'missing') return { OR: [{ phone: null }, { phone: '' }] };
+  if (value === 'registered') return { AND: [{ phone: { not: null } }, { phone: { not: '' } }] };
+  return null;
+}
+
 export async function adminOverview() {
   const since = daysAgo(13);
   const weekAgo = daysAgo(6);
   const monthAgo = daysAgo(29);
 
-  const [transactions, games, agentTx, usersCount, newUsers, pendingWithdrawals, pendingAgentWithdrawals, pendingDeposits, pendingAgents] =
-    await Promise.all([
+  const [
+    transactions,
+    games,
+    agentTx,
+    usersCount,
+    newUsers,
+    missingPhones,
+    pendingWithdrawals,
+    pendingAgentWithdrawals,
+    pendingDeposits,
+    pendingAgents,
+  ] = await Promise.all([
       prisma.transaction.findMany({ where: { createdAt: { gte: since }, status: 'completed' } }),
       prisma.game.findMany({ where: { createdAt: { gte: since } } }),
       prisma.agentTransaction.findMany({ where: { createdAt: { gte: since }, status: 'completed' } }),
       prisma.user.count(),
       prisma.user.count({ where: { createdAt: { gte: weekAgo } } }),
+      prisma.user.count({ where: phoneStatusWhere('missing') }),
       prisma.withdrawal.count({ where: { status: 'PENDING' } }),
       prisma.agentWithdrawal.count({ where: { status: 'PENDING' } }),
       prisma.deposit.count({ where: { status: 'PENDING_REVIEW' } }),
@@ -103,6 +125,7 @@ export async function adminOverview() {
       gmv: sum(transactions, 'stake'),
       players: usersCount,
       newUsersWeek: newUsers,
+      missingPhones,
       agentsWithBonus: pendingAgents,
     },
     active: {
@@ -135,7 +158,7 @@ const csvEscape = (value) => {
 const toCsv = (headers, rows) =>
   [headers.join(','), ...rows.map((row) => row.map(csvEscape).join(','))].join('\n');
 
-export async function exportCsv(type) {
+export async function exportCsv(type, { phoneStatus = 'all' } = {}) {
   if (type === 'transactions') {
     const rows = await prisma.transaction.findMany({ orderBy: { id: 'desc' }, take: 5000 });
     return toCsv(
@@ -166,14 +189,20 @@ export async function exportCsv(type) {
       ]),
     );
   }
-  const rows = await prisma.user.findMany({ orderBy: { id: 'desc' }, take: 5000 });
+  const phoneWhere = phoneStatusWhere(phoneStatus);
+  const rows = await prisma.user.findMany({
+    where: phoneWhere || {},
+    orderBy: { id: 'desc' },
+    take: 5000,
+  });
   return toCsv(
-    ['id', 'telegramId', 'username', 'firstName', 'balanceETB', 'derash', 'role', 'referredByAgentId', 'isBanned', 'hasPlayed', 'createdAt'],
+    ['id', 'telegramId', 'username', 'firstName', 'phone', 'balanceETB', 'derash', 'role', 'referredByAgentId', 'isBanned', 'hasPlayed', 'createdAt'],
     rows.map((u) => [
       u.id,
       u.telegramId,
       u.username,
       u.firstName,
+      u.phone,
       u.balance / 100,
       u.derash,
       u.role,

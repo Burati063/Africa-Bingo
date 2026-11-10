@@ -6,7 +6,7 @@ import multer from 'multer';
 import { prisma } from '../db.js';
 import { requireStaff } from '../auth.js';
 import { asyncHandler, AppError } from '../util.js';
-import { adminOverview, exportCsv } from '../analytics.js';
+import { adminOverview, exportCsv, phoneStatusWhere } from '../analytics.js';
 import { getSettings, updateSettings } from '../settings.js';
 import { adminRoundDetails, startRoundNow } from '../engine.js';
 import {
@@ -19,7 +19,7 @@ import {
   rejectWithdrawal,
 } from '../wallet.js';
 import { setSetting } from '../settings.js';
-import { broadcastTelegram } from '../telegram.js';
+import { broadcastTelegram, requestPhoneFromUser } from '../telegram.js';
 import { uniqueReferralCode } from '../agents.js';
 import { referralLinkFor } from './auth.js';
 import { VOICE_DIR } from '../paths.js';
@@ -70,16 +70,21 @@ router.get(
   '/users',
   asyncHandler(async (req, res) => {
     const search = String(req.query.search || '').trim();
-    const where = search
-      ? {
-          OR: [
-            { username: { contains: search } },
-            { firstName: { contains: search } },
-            { telegramId: { contains: search } },
-            { phone: { contains: search } },
-          ],
-        }
-      : {};
+    const phoneStatus = String(req.query.phoneStatus || 'all').trim().toLowerCase();
+    const filters = [];
+    if (search) {
+      filters.push({
+        OR: [
+          { username: { contains: search } },
+          { firstName: { contains: search } },
+          { telegramId: { contains: search } },
+          { phone: { contains: search } },
+        ],
+      });
+    }
+    const phoneWhere = phoneStatusWhere(phoneStatus);
+    if (phoneWhere) filters.push(phoneWhere);
+    const where = filters.length ? { AND: filters } : {};
     const users = await prisma.user.findMany({
       where,
       orderBy: { id: 'desc' },
@@ -160,6 +165,28 @@ router.post(
       data: { staffId: req.staff.sid, actionType: banned ? 'user_ban' : 'user_unban', details: `user:${id}` },
     });
     res.json({ ok: true, isBanned: user.isBanned });
+  }),
+);
+
+router.post(
+  '/users/:id/request-phone',
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) throw new AppError('User not found', 404);
+    if (user.phone) throw new AppError('This player already registered a phone number.');
+    if (!/^-?\d+$/.test(String(user.telegramId || ''))) {
+      throw new AppError('This player has no Telegram chat to message.');
+    }
+    const result = await requestPhoneFromUser(user.telegramId);
+    await prisma.adminAction.create({
+      data: {
+        staffId: req.staff.sid,
+        actionType: 'phone_request',
+        details: JSON.stringify({ userId: id, simulated: result.simulated }),
+      },
+    });
+    res.json(result);
   }),
 );
 
@@ -618,7 +645,7 @@ router.get(
   '/export',
   asyncHandler(async (req, res) => {
     const type = String(req.query.type || 'users');
-    const csv = await exportCsv(type);
+    const csv = await exportCsv(type, { phoneStatus: req.query.phoneStatus });
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${type}-${new Date().toISOString().slice(0, 10)}.csv"`);
     res.send(csv);

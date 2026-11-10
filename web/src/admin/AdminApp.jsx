@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api.js';
 import StaffLogin from '../components/StaffLogin.jsx';
+import Logo from '../components/Logo.jsx';
 import Overview from './Overview.jsx';
 import GameControl from './GameControl.jsx';
 import Users from './Users.jsx';
@@ -24,6 +25,7 @@ export default function AdminApp() {
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY));
   const [account, setAccount] = useState(null);
   const [tab, setTab] = useState('overview');
+  const [phoneFilter, setPhoneFilter] = useState('all');
   const [error, setError] = useState('');
   const [checking, setChecking] = useState(Boolean(token));
 
@@ -85,7 +87,8 @@ export default function AdminApp() {
 
   async function downloadCsv(type) {
     try {
-      const res = await fetch(`/api/admin/export?type=${type}`, {
+      const query = type === 'users' ? `&phoneStatus=${encodeURIComponent(phoneFilter)}` : '';
+      const res = await fetch(`/api/admin/export?type=${type}${query}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error('Export failed');
@@ -105,7 +108,7 @@ export default function AdminApp() {
     <div className="dashboard-shell">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <div className="brand-mark small">B</div>
+          <Logo size={38} />
           <div>
             <strong>Africa Bingo</strong>
             <span>Admin Panel</span>
@@ -152,7 +155,9 @@ export default function AdminApp() {
         <div className="dashboard-body">
           {tab === 'overview' && <Overview token={token} onNavigate={setTab} />}
           {tab === 'game' && <GameControl token={token} />}
-          {tab === 'users' && <Users token={token} />}
+          {tab === 'users' && (
+            <Users token={token} phoneFilter={phoneFilter} onPhoneFilterChange={setPhoneFilter} />
+          )}
           {tab === 'withdrawals' && <Withdrawals token={token} />}
           {tab === 'agents' && <Agents token={token} />}
           {tab === 'audit' && <Audit token={token} />}

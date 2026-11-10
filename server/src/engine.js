@@ -6,6 +6,10 @@ import { AppError } from './util.js';
 import { onStake } from './agents.js';
 import { computePayout, totalRealStakes } from './payouts.js';
 
+// Cards are numbered 1..432. Every number is a distinct card and a number
+// can only be bought once per round.
+export const MAX_CARDS = 432;
+
 const BOT_NAMES = [
   'Abebe', 'Hana', 'Dawit', 'Selam', 'Yonas', 'Mimi', 'Kebede', 'Tigist', 'Bereket',
   'Sara', 'Mulu', 'Fikru', 'Liya', 'Samuel', 'Rahel', 'Tesfaye', 'Eden', 'Nati',
@@ -18,6 +22,7 @@ const state = {
   timer: null,
   ticking: false,
   creating: false,
+  joining: new Set(),
 };
 
 function pickBotName(used) {
@@ -42,13 +47,29 @@ function phone4From(value) {
   return digits.length >= 4 ? digits.slice(-4) : randomPhone4();
 }
 
+function randomPhone() {
+  return `+2519${Math.floor(10_000_000 + Math.random() * 89_999_999)}`;
+}
+
+/** Public winner phone format: +251*****9780 (only the last four digits are visible). */
+export function maskPhone(value) {
+  return `+251*****${phone4From(value)}`;
+}
+
 function winnerCardFor(player, called) {
   const cards = player.cards || [];
+  const slots = player.slots || [];
   for (let index = 0; index < cards.length; index += 1) {
     const line = winningLineFor(cards[index], called);
-    if (line) return { card: cards[index], line, cardNumber: index + 1 };
+    if (line) return { card: cards[index], line, cardNumber: slots[index] || index + 1 };
   }
-  return cards.length ? { card: cards[0], line: null, cardNumber: 1 } : null;
+  return cards.length
+    ? { card: cards[0], line: null, cardNumber: slots[0] || 1 }
+    : null;
+}
+
+function cardForSlot(round, slot) {
+  return generateCard((round.seed + slot * 7919) >>> 0);
 }
 
 function prizePoolFor(round) {
@@ -77,10 +98,12 @@ export function getPublicState() {
     playersCount: round.players.length,
     calledNumbers: [...round.called],
     lastCalled: round.lastCalled,
+    takenCards: [...round.taken.keys()],
     nextCallInMs: round.status === 'CALLING' ? Math.max(0, round.nextCallAt - now) : null,
     startsInMs: round.status === 'WAITING' && Number(getSettings().autoStart) !== 0
       ? Math.max(0, round.waitEndsAt - now)
       : null,
+    selectionEndsInMs: round.status === 'WAITING' ? Math.max(0, round.waitEndsAt - now) : null,
     nextRoundInMs: round.status === 'ENDED' ? Math.max(0, round.nextRoundAt - now) : null,
     winners: round.winners || [],
     drawNumber: round.called.size,
@@ -95,6 +118,8 @@ export function getPlayerView(round, userId) {
   return {
     playerId: player.id,
     cards: player.cards,
+    slots: player.slots || [],
+    spent: player.paidStake || 0,
     blocked: round.blocked.has(userId),
     hasBingo: playerHasBingo(player, round),
     isWinner: Boolean(round.winnerIds?.includes(player.id)),
@@ -194,11 +219,13 @@ async function createRound() {
       id: game.id,
       status: 'WAITING',
       stake,
+      seed: game.id * 2654435761,
       bots: [],
       players: [],
       called: new Set(),
       lastCalled: null,
       deck: shuffleDeck(),
+      taken: new Map(),
       waitEndsAt: Date.now() + Math.max(5, Number(settings.waitSeconds)) * 1000,
       nextCallAt: 0,
       nextRoundAt: 0,
@@ -211,10 +238,13 @@ async function createRound() {
     };
 
     const used = new Set();
+    const freeSlots = Array.from({ length: MAX_CARDS }, (_, i) => i + 1);
     for (let i = 0; i < botCount; i += 1) {
       const isForcedBot = forced?.type === 'bot' && i === 0;
       const name = isForcedBot ? forced.name : pickBotName(used);
-      const cards = [generateCard()];
+      // Bots occupy random card numbers too, so a number stays unique per round.
+      const slot = freeSlots.splice(Math.floor(Math.random() * freeSlots.length), 1)[0] || i + 1;
+      const cards = [cardForSlot(round, slot)];
       const row = await prisma.gamePlayer.create({
         data: {
           gameId: game.id,
@@ -224,13 +254,16 @@ async function createRound() {
           paidStake: 0,
         },
       });
+      round.taken.set(slot, row.id);
       round.players.push({
         id: row.id,
         userId: null,
         isBot: true,
         name,
+        phone: randomPhone(),
         phone4: randomPhone4(),
         cards,
+        slots: [slot],
         paidStake: 0,
         claimAt: 0,
         claimed: false,
@@ -334,7 +367,8 @@ async function finishRound(triggerPlayer, reason) {
     const winning = winnerCardFor(p, round.called);
     return {
       name: p.name,
-      phone4: p.phone4 || phone4From(p.phone || p.userId),
+      phone4: phone4From(p.phone),
+      phoneMasked: maskPhone(p.phone),
       amount: p.isBot ? pool : share,
       cardNumber: winning?.cardNumber || 1,
       card: winning?.card || null,
@@ -456,74 +490,139 @@ export function stopEngine() {
 }
 
 /**
- * Player buys 1-3 cards for the current waiting round. All money movement is
- * server-side and the balance check is atomic.
+ * Player picks one or more card numbers (1..432) while the round is open.
+ * Each pick costs the round stake (20 ETB by default) and is charged
+ * immediately. A card number is reserved for the whole round, so no one else
+ * can pick it. The waiting window is the selection window (30s by default).
  */
-export async function joinRound(user, cardCount = 1) {
+export async function joinRound(user, selection = []) {
   const round = state.current;
   if (!round) throw new AppError('ቀጣዩ ዙር እየተዘጋጀ ነው። ከጥቂት ጊዜ በኋላ እንደገና ይሞክሩ።');
   if (round.status !== 'WAITING') throw new AppError('ይህ ዙር አስቀድሞ ተጀምሯል። ቀጣዩን ዙር ይጠብቁ።');
   if (user.isBanned) throw new AppError('ይህ መለያ ታግዷል።', 403);
-  if (round.players.some((p) => p.userId === user.id)) throw new AppError('በዚህ ዙር አስቀድመው ተቀላቅለዋል።');
+  if (Date.now() >= round.waitEndsAt) {
+    throw new AppError('የመምረጫ ጊዜው አልቋል። ቀጣዩን ዙር ይጠብቁ።');
+  }
+  if (state.joining.has(user.id)) {
+    throw new AppError('ቀድሞ በመካሄድ ላይ ነው። እባክዎ ትንሽ ይጠብቁ።');
+  }
 
-  const cards = Math.max(1, Math.min(3, Number(cardCount) || 1));
-  const total = round.stake * cards;
-  const fresh = await prisma.user.findUnique({ where: { id: user.id } });
-  if (!fresh || fresh.balance < total) throw new AppError('ቀሪ ሂሳብ በቂ አይደለም። እባክዎ መጀመሪያ ያስገቡ።');
+  const raw = Array.isArray(selection) ? selection : selection == null ? [] : [selection];
+  const slots = [...new Set(raw.map((v) => Math.floor(Number(v))).filter((v) => Number.isFinite(v)))];
+  if (!slots.length) throw new AppError(`ከ1 እስከ ${MAX_CARDS} የካርድ ቁጥር ይምረጡ።`);
+  if (slots.length !== raw.length) throw new AppError('እያንዳንዱን ካርድ አንድ ጊዜ ብቻ ይምረጡ።');
+  if (slots.some((s) => s < 1 || s > MAX_CARDS)) {
+    throw new AppError(`ካርድ ቁጥር ከ1 እስከ ${MAX_CARDS} መሆን አለበት።`);
+  }
+  const clash = slots.find((s) => round.taken.has(s));
+  if (clash) throw new AppError(`ካርድ #${clash} አስቀድሞ ተመርጧል። ሌላ ቁጥር ይምረጡ።`);
 
-  const reserved = await prisma.user.updateMany({
-    where: { id: user.id, balance: { gte: total } },
-    data: { balance: { decrement: total } },
-  });
-  if (reserved.count === 0) throw new AppError('ቀሪ ሂሳብ በቂ አይደለም። እባክዎ መጀመሪያ ያስገቡ።');
+  // Reserve the numbers synchronously so two players can never get the same one.
+  state.joining.add(user.id);
+  for (const slot of slots) round.taken.set(slot, user.id);
 
-  const generated = Array.from({ length: cards }, () => generateCard());
-  const row = await prisma.gamePlayer.create({
-    data: {
-      gameId: round.id,
-      userId: user.id,
-      cards: JSON.stringify(generated),
-      paidStake: total,
-    },
-  });
-  await prisma.transaction.create({
-    data: {
-      userId: user.id,
-      type: 'stake',
-      amount: total,
-      status: 'completed',
-      reference: `game:${round.id}`,
-    },
-  });
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { derash: { increment: Math.floor(total / 1000) } },
-  });
+  const total = round.stake * slots.length;
+  let charged = false;
+  try {
+    const fresh = await prisma.user.findUnique({ where: { id: user.id } });
+    if (!fresh || fresh.balance < total) {
+      throw new AppError('ቀሪ ሂሳብ በቂ አይደለም። እባክዎ መጀመሪያ ያስገቡ።');
+    }
 
-  round.players.push({
-    id: row.id,
-    userId: user.id,
-    isBot: false,
-    name: fresh.firstName || fresh.username || `Player ${user.id}`,
-    phone: fresh.phone || fresh.telegramId,
-    phone4: phone4From(fresh.phone || fresh.telegramId),
-    cards: generated,
-    paidStake: total,
-    claimAt: 0,
-    claimed: false,
-    forced: false,
-  });
-  round.prizePool = prizePoolFor(round);
-  await prisma.game.update({ where: { id: round.id }, data: { prizePool: round.prizePool } });
+    const reserved = await prisma.user.updateMany({
+      where: { id: user.id, balance: { gte: total } },
+      data: { balance: { decrement: total } },
+    });
+    if (reserved.count === 0) throw new AppError('ቀሪ ሂሳብ በቂ አይደለም። እባክዎ መጀመሪያ ያስገቡ።');
+    charged = true;
 
-  await onStake(user.id, total);
+    // The window may have closed while the balance was being checked.
+    if (round.status !== 'WAITING' || Date.now() >= round.waitEndsAt) {
+      throw new AppError('የመምረጫ ጊዜው አልቋል። ቀጣዩን ዙር ይጠብቁ።');
+    }
 
-  const updated = await prisma.user.findUnique({ where: { id: user.id }, select: { balance: true } });
-  emitToUser(user.id, 'balance', { balance: updated.balance });
-  emitToUser(user.id, 'you', getPlayerView(round, user.id));
-  broadcastAll();
+    const generated = slots.map((slot) => cardForSlot(round, slot));
+    let player = round.players.find((p) => p.userId === user.id);
 
-  return { playerId: row.id, cards: generated, balance: updated.balance };
+    if (player) {
+      player.cards = [...player.cards, ...generated];
+      player.slots = [...(player.slots || []), ...slots];
+      player.paidStake += total;
+      await prisma.gamePlayer.update({
+        where: { id: player.id },
+        data: { cards: JSON.stringify(player.cards), paidStake: player.paidStake },
+      });
+    } else {
+      const row = await prisma.gamePlayer.create({
+        data: {
+          gameId: round.id,
+          userId: user.id,
+          cards: JSON.stringify(generated),
+          paidStake: total,
+        },
+      });
+      player = {
+        id: row.id,
+        userId: user.id,
+        isBot: false,
+        name: fresh.firstName || fresh.username || `Player ${user.id}`,
+        phone: fresh.phone || null,
+        phone4: phone4From(fresh.phone),
+        cards: generated,
+        slots: [...slots],
+        paidStake: total,
+        claimAt: 0,
+        claimed: false,
+        forced: false,
+      };
+      round.players.push(player);
+    }
+
+    await prisma.transaction.create({
+      data: {
+        userId: user.id,
+        type: 'stake',
+        amount: total,
+        status: 'completed',
+        reference: `game:${round.id}`,
+      },
+    });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { derash: { increment: Math.floor(total / 1000) } },
+    });
+
+    round.prizePool = prizePoolFor(round);
+    await prisma.game.update({ where: { id: round.id }, data: { prizePool: round.prizePool } });
+
+    await onStake(user.id, total);
+
+    const updated = await prisma.user.findUnique({ where: { id: user.id }, select: { balance: true } });
+    emitToUser(user.id, 'balance', { balance: updated.balance });
+    emitToUser(user.id, 'you', getPlayerView(round, user.id));
+    broadcastAll();
+
+    return {
+      playerId: player.id,
+      cards: player.cards,
+      slots: player.slots,
+      spent: player.paidStake,
+      balance: updated.balance,
+      you: getPlayerView(round, user.id),
+    };
+  } catch (err) {
+    for (const slot of slots) {
+      if (round.taken.get(slot) === user.id) round.taken.delete(slot);
+    }
+    if (charged) {
+      await prisma.user
+        .update({ where: { id: user.id }, data: { balance: { increment: total } } })
+        .catch(() => {});
+    }
+    throw err;
+  } finally {
+    state.joining.delete(user.id);
+  }
 }
 
 export async function claimBingo(user) {
@@ -567,6 +666,12 @@ export async function adminRoundDetails() {
     calledOrder: [...round.called],
     realPlayers: round.players
       .filter((p) => !p.isBot)
-      .map((p) => ({ id: p.userId, name: p.name, bingo: playerHasBingo(p, round), cards: p.cards.length })),
+      .map((p) => ({
+        id: p.userId,
+        name: p.name,
+        bingo: playerHasBingo(p, round),
+        cards: p.cards.length,
+        numbers: p.slots || [],
+      })),
   };
 }
