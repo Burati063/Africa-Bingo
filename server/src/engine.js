@@ -461,21 +461,21 @@ export function stopEngine() {
  */
 export async function joinRound(user, cardCount = 1) {
   const round = state.current;
-  if (!round) throw new AppError('The next round is being prepared. Try again in a moment.');
-  if (round.status !== 'WAITING') throw new AppError('This round already started. Wait for the next one.');
-  if (user.isBanned) throw new AppError('This account is suspended.', 403);
-  if (round.players.some((p) => p.userId === user.id)) throw new AppError('You already joined this round.');
+  if (!round) throw new AppError('ቀጣዩ ዙር እየተዘጋጀ ነው። ከጥቂት ጊዜ በኋላ እንደገና ይሞክሩ።');
+  if (round.status !== 'WAITING') throw new AppError('ይህ ዙር አስቀድሞ ተጀምሯል። ቀጣዩን ዙር ይጠብቁ።');
+  if (user.isBanned) throw new AppError('ይህ መለያ ታግዷል።', 403);
+  if (round.players.some((p) => p.userId === user.id)) throw new AppError('በዚህ ዙር አስቀድመው ተቀላቅለዋል።');
 
   const cards = Math.max(1, Math.min(3, Number(cardCount) || 1));
   const total = round.stake * cards;
   const fresh = await prisma.user.findUnique({ where: { id: user.id } });
-  if (!fresh || fresh.balance < total) throw new AppError('Insufficient balance. Please deposit first.');
+  if (!fresh || fresh.balance < total) throw new AppError('ቀሪ ሂሳብ በቂ አይደለም። እባክዎ መጀመሪያ ያስገቡ።');
 
   const reserved = await prisma.user.updateMany({
     where: { id: user.id, balance: { gte: total } },
     data: { balance: { decrement: total } },
   });
-  if (reserved.count === 0) throw new AppError('Insufficient balance. Please deposit first.');
+  if (reserved.count === 0) throw new AppError('ቀሪ ሂሳብ በቂ አይደለም። እባክዎ መጀመሪያ ያስገቡ።');
 
   const generated = Array.from({ length: cards }, () => generateCard());
   const row = await prisma.gamePlayer.create({
@@ -529,18 +529,18 @@ export async function joinRound(user, cardCount = 1) {
 export async function claimBingo(user) {
   const round = state.current;
   if (!round || round.status !== 'CALLING') {
-    throw new AppError('There is no active round to claim.');
+    throw new AppError('ማመልከቻ የሚቻልበት ንቁ ዙር የለም።');
   }
   if (round.blocked.has(user.id)) {
-    throw new AppError('You were blocked from claiming this round after a false claim.');
+    throw new AppError('ከተሳሳተ ጥያቄ በኋላ በዚህ ዙር እንዳያመለክቱ ተከልክለዋል።');
   }
   const player = round.players.find((p) => p.userId === user.id);
-  if (!player) throw new AppError('You are not playing in this round.');
+  if (!player) throw new AppError('በዚህ ዙር አይጫወቱም።');
 
   if (!playerHasBingo(player, round)) {
     round.blocked.add(user.id);
     emitToUser(user.id, 'you', getPlayerView(round, user.id));
-    throw new AppError('False claim — you do not have bingo yet. You are blocked for this round.');
+    throw new AppError('የተሳሳተ ጥያቄ — እስካሁን ቢንጎ የለዎትም። በዚህ ዙር ተከልክለዋል።');
   }
 
   await finishRound(player, 'claim');

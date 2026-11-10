@@ -93,10 +93,10 @@ export function resolveIdentity({ initData, startParam, devTelegramId, devFirstN
     return { telegramId: String(tgUser.id), firstName: tgUser.first_name, username: tgUser.username, verified: true };
   }
   if (!DEV_MODE) {
-    if (BOT_TOKEN) throw new AppError('Invalid Telegram authentication data', 401);
-    throw new AppError('Telegram authentication is not configured on this server', 503);
+    if (BOT_TOKEN) throw new AppError('የቴሌግራም ማረጋገጫ መረጃ ልክ አይደለም።', 401);
+    throw new AppError('በዚህ አገልጋይ ላይ የቴሌግራም ማረጋገጫ አልተዘጋጀም።', 503);
   }
-  if (!devTelegramId) throw new AppError('Missing Telegram authentication data', 401);
+  if (!devTelegramId) throw new AppError('የቴሌግራም ማረጋገጫ መረጃ ይጎድላል።', 401);
   return {
     telegramId: String(devTelegramId).replace(/[^0-9A-Za-z_-]/g, '').slice(0, 64) || 'dev-player',
     firstName: (devFirstName || 'Dev').slice(0, 64),

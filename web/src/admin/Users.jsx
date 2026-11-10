@@ -92,7 +92,7 @@ export default function Users({ token }) {
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search name, username or Telegram ID"
+              placeholder="Search name, phone, username or Telegram ID"
             />
             <button type="submit" className="btn ghost small">
               Search
@@ -105,6 +105,7 @@ export default function Users({ token }) {
             <thead>
               <tr>
                 <th>Player</th>
+                <th>Phone</th>
                 <th>Telegram</th>
                 <th>Balance</th>
                 <th>Derash</th>
@@ -120,6 +121,7 @@ export default function Users({ token }) {
                     <strong>{user.firstName || user.username || `User ${user.id}`}</strong>
                     <div className="muted small">#{user.id} · joined {dt(user.createdAt)}</div>
                   </td>
+                  <td className="muted small">{user.phone || '—'}</td>
                   <td className="muted small">
                     {user.username ? `@${user.username}` : '—'}
                     <div>{user.telegramId}</div>
@@ -162,7 +164,7 @@ export default function Users({ token }) {
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="muted">
+                  <td colSpan={8} className="muted">
                     No users found.
                   </td>
                 </tr>
@@ -195,6 +197,10 @@ export default function Users({ token }) {
             <div>
               <span className="muted small">Role</span>
               <strong>{detail.user.role}</strong>
+            </div>
+            <div>
+              <span className="muted small">Phone</span>
+              <strong>{detail.user.phone || '—'}</strong>
             </div>
             <div>
               <span className="muted small">Telegram ID</span>

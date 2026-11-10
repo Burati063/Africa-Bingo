@@ -20,7 +20,7 @@ const loginLimiter = rateLimit({
   limit: 30,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many login attempts. Try again in a minute.' },
+  message: { error: 'ብዙ የመግቢያ ሙከራዎች። ከአንድ ደቂቃ በኋላ እንደገና ይሞክሩ።' },
 });
 
 function publicUser(user) {
@@ -51,7 +51,7 @@ router.post(
   loginLimiter,
   asyncHandler(async (req, res) => {
     const { initData, startParam, devTelegramId, devFirstName, devUsername } = req.body || {};
-    if (req.user?.isBanned) throw new AppError('This account is suspended.', 403);
+    if (req.user?.isBanned) throw new AppError('ይህ መለያ ታግዷል።', 403);
 
     const identity = resolveIdentity({ initData, startParam, devTelegramId, devFirstName, devUsername });
 
@@ -74,7 +74,7 @@ router.post(
       });
     }
 
-    if (user.isBanned) throw new AppError('This account is suspended.', 403);
+    if (user.isBanned) throw new AppError('ይህ መለያ ታግዷል።', 403);
 
     const code = startParam || startParamFromInitData(initData);
     if (code && !user.referredByAgentId) {

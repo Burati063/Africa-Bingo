@@ -19,7 +19,7 @@ export async function api(path, { token, method = 'GET', body, formData } = {}) 
     }
   }
   if (!res.ok) {
-    const error = new Error(data.error || `Request failed (${res.status})`);
+    const error = new Error(data.error || `ጥያቄው አልተሳካም (${res.status})`);
     error.status = res.status;
     throw error;
   }

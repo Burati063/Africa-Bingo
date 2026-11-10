@@ -36,59 +36,75 @@ function lineFor(card, called) {
 }
 
 function WinnerOverlay({ game, you }) {
-  const winner = game?.winners?.[0];
-  if (!winner) return null;
+  const winners = game?.winners || [];
+  if (!winners.length) return null;
 
   const called = new Set(game?.calledNumbers || []);
-  const line = winner.line || [];
-  const lineSet = new Set(line.map(([col, row]) => `${col}-${row}`));
 
   return (
-    <div className="winner-overlay" role="dialog" aria-label="Bingo winner">
+    <div className="winner-overlay" role="dialog" aria-label="የቢንጎ አሸናፊዎች">
       <div className="winner-card">
         <div className="wc-sparkle">🎉</div>
         <h2 className="wc-title">BINGO</h2>
-        <div className="wc-name">
-          {winner.name}
-          {winner.phone4 ? <span> · {winner.phone4}</span> : null}
+        {winners.length > 1 && (
+          <div className="wc-count">{winners.length} አሸናፊዎች በዚህ ዙር</div>
+        )}
+
+        <div className="wc-winners">
+          {winners.map((winner, index) => {
+            const lineSet = new Set((winner.line || []).map(([col, row]) => `${col}-${row}`));
+            return (
+              <div className="wc-winner" key={`${winner.name}-${winner.phone4}-${index}`}>
+                {winners.length > 1 && (
+                  <div className="wc-winner-head">
+                    <span className="wc-winner-tag">አሸናፊ {index + 1}</span>
+                  </div>
+                )}
+                <div className="wc-name">
+                  {winner.name}
+                  {winner.phone4 ? <span> · {winner.phone4}</span> : null}
+                </div>
+
+                {winner.card ? (
+                  <>
+                    <div className="wc-letters">
+                      {COLUMNS.map((letter) => (
+                        <span key={letter}>{letter}</span>
+                      ))}
+                    </div>
+                    <div className="wc-grid">
+                      {Array.from({ length: 5 }, (_, row) =>
+                        COLUMNS.map((_, col) => {
+                          const n = winner.card[col]?.[row];
+                          const marked = n === 0 || called.has(n);
+                          const selected = lineSet.has(`${col}-${row}`);
+                          return (
+                            <span
+                              key={`${col}-${row}`}
+                              className={`wc-cell ${marked ? 'marked' : ''} ${selected ? 'selected' : ''} ${n === 0 ? 'free' : ''}`}
+                            >
+                              {n === 0 ? '★' : n}
+                            </span>
+                          );
+                        }),
+                      )}
+                    </div>
+                  </>
+                ) : null}
+
+                <div className="wc-foot">
+                  <span>
+                    ሽልማት <strong>{etb(winner.amount)} ETB</strong>
+                  </span>
+                  <span>ካርድ #{winner.cardNumber}</span>
+                </div>
+              </div>
+            );
+          })}
         </div>
 
-        {winner.card ? (
-          <>
-            <div className="wc-letters">
-              {COLUMNS.map((letter) => (
-                <span key={letter}>{letter}</span>
-              ))}
-            </div>
-            <div className="wc-grid">
-              {Array.from({ length: 5 }, (_, row) =>
-                COLUMNS.map((_, col) => {
-                  const n = winner.card[col]?.[row];
-                  const marked = n === 0 || called.has(n);
-                  const selected = lineSet.has(`${col}-${row}`);
-                  return (
-                    <span
-                      key={`${col}-${row}`}
-                      className={`wc-cell ${marked ? 'marked' : ''} ${selected ? 'selected' : ''} ${n === 0 ? 'free' : ''}`}
-                    >
-                      {n === 0 ? '★' : n}
-                    </span>
-                  );
-                }),
-              )}
-            </div>
-          </>
-        ) : null}
-
-        {you?.isWinner && <div className="wc-you">You won {etb(you.winAmount)} ETB</div>}
-
-        <div className="wc-foot">
-          <span>
-            Prize <strong>{etb(winner.amount)} ETB</strong>
-          </span>
-          <span>Card #{winner.cardNumber}</span>
-        </div>
-        <div className="wc-next">Next round in {countdown(game?.nextRoundInMs)}…</div>
+        {you?.isWinner && <div className="wc-you">አሸንፈዋል {etb(you.winAmount)} ETB</div>}
+        <div className="wc-next">ቀጣዩ ዙር በ {countdown(game?.nextRoundInMs)}…</div>
       </div>
     </div>
   );
@@ -152,25 +168,25 @@ export default function GameScreen({
     <div className="game-screen">
       <div className="round-strip">
         <span className={`status-pill ${game?.status?.toLowerCase() || ''}`}>
-          {isWaiting ? 'ROUND OPEN' : isCalling ? 'LIVE' : ended ? 'FINISHED' : 'CONNECTING'}
+          {isWaiting ? 'ዙር ክፍት' : isCalling ? 'በቀጥታ' : ended ? 'ተጠናቅቋል' : 'በመገናኘት ላይ'}
         </span>
-        <span className="game-id-chip">Game ID #{game?.id ?? '—'}</span>
+        <span className="game-id-chip">የጨዋታ መለያ #{game?.id ?? '—'}</span>
         <span className="muted">
-          {you ? `Card${you.cards?.length > 1 ? 's' : ''} bought` : 'Good luck!'}
+          {you ? `${you.cards?.length > 1 ? 'ካርዶች' : 'ካርድ'} ተገዝቷል` : 'መልካም እድል!'}
         </span>
         <button
           type="button"
           className="icon-voice"
           onClick={onToggleVoice}
           disabled={!voiceAvailable}
-          title="Voice announcements"
+          title="የድምጽ ማስታወቂያ"
         >
           {voiceOn ? '🔊' : '🔇'}
         </button>
       </div>
 
       <div className="board-wrap">
-        <section className="master-board" aria-label="Bingo board">
+        <section className="master-board" aria-label="የቢንጎ ሰሌዳ">
           {COLUMNS.map((letter, colIndex) => (
             <div className="board-col" key={letter}>
               <div className="board-head">{letter}</div>
@@ -190,8 +206,8 @@ export default function GameScreen({
           ))}
         </section>
 
-        <aside className="call-rail" aria-label="Recent calls">
-          <span className="call-rail-title">Calls</span>
+        <aside className="call-rail" aria-label="የቅርብ ጥሪዎች">
+          <span className="call-rail-title">ጥሪዎች</span>
           {callHistory.length ? (
             callHistory.map((n) => (
               <span key={n} className={`call-chip ${game?.lastCalled === n ? 'current' : ''}`}>
@@ -208,11 +224,11 @@ export default function GameScreen({
         <div className="join-panel">
           <div className="join-head">
             <div>
-              <p className="eyebrow">Entry fee {etb(game?.stake)} ETB per card</p>
-              <h2>Next round starts in {countdown(game?.startsInMs)}</h2>
+              <p className="eyebrow">የመግቢያ ክፍያ በካርድ {etb(game?.stake)} ETB</p>
+              <h2>ቀጣዩ ዙር በ {countdown(game?.startsInMs)} ይጀምራል</h2>
             </div>
             <div className="pool-badge">
-              <span>Prize pool</span>
+              <span>የሽልማት ገንዘብ</span>
               <strong>{etb(game?.prizePool)} ETB</strong>
             </div>
           </div>
@@ -228,7 +244,7 @@ export default function GameScreen({
                     onClick={() => setCards(n)}
                   >
                     <strong>{n}</strong>
-                    <span>card{n > 1 ? 's' : ''}</span>
+                    <span>{n > 1 ? 'ካርዶች' : 'ካርድ'}</span>
                   </button>
                 ))}
               </div>
@@ -238,13 +254,13 @@ export default function GameScreen({
                 disabled={busy || !canJoin}
                 onClick={() => onJoin(cards)}
               >
-                {busy ? 'Joining…' : `Join round — ${etb(totalPrice)} ETB`}
+                {busy ? 'በመቀላቀል ላይ…' : `ዙሩን ተቀላቀሉ — ${etb(totalPrice)} ETB`}
               </button>
-              <p className="fine-print">Balance: {etb(me?.balance)} ETB</p>
+              <p className="fine-print amharic">ቀሪ ሂሳብ፦ {etb(me?.balance)} ETB</p>
             </>
           ) : (
-            <div className="waiting-note">
-              <span className="pulse-dot" /> You are in. Numbers start calling automatically.
+            <div className="waiting-note amharic">
+              <span className="pulse-dot" /> ተቀላቅለዋል። ቁጥሮች በራስ-ሰር ይጠራሉ።
             </div>
           )}
         </div>
@@ -260,12 +276,12 @@ export default function GameScreen({
                 disabled={busy || you.blocked}
                 onClick={onClaim}
               >
-                {you.blocked ? 'BLOCKED' : you.hasBingo ? 'BINGO! CLAIM NOW' : 'Bingo!'}
+                {you.blocked ? 'ተከልክለዋል' : you.hasBingo ? 'ቢንጎ! አሁን ይጠይቁ' : 'ቢንጎ!'}
               </button>
-              <div className="call-timer">
-                Next number in <strong>{seconds(game?.nextCallInMs)}s</strong>
-                {you.hasBingo && <span className="bingo-hint">You have a line — claim it!</span>}
-                {you.blocked && <span className="blocked-hint">False claim detected. You cannot claim this round.</span>}
+              <div className="call-timer amharic">
+                ቀጣዩ ቁጥር በ <strong>{seconds(game?.nextCallInMs)} ሰከንድ</strong>
+                {you.hasBingo && <span className="bingo-hint">መስመር ሙሉ ነው — ይጠይቁ!</span>}
+                {you.blocked && <span className="blocked-hint">የተሳሳተ ጥያቄ። በዚህ ዙር ማመልከት አይችሉም።</span>}
               </div>
             </>
           ) : (
@@ -279,8 +295,8 @@ export default function GameScreen({
       {you?.cards?.length > 0 && (
         <section className="my-cards">
           <div className="section-title">
-            <h3>My card{you.cards.length > 1 ? 's' : ''}</h3>
-            <span className="muted">{you.hasBingo ? 'Line complete!' : 'Auto-marking on'}</span>
+            <h3>የእኔ {you.cards.length > 1 ? 'ካርዶች' : 'ካርድ'}</h3>
+            <span className="muted amharic">{you.hasBingo ? 'መስመር ተሞልቷል!' : 'ራስ-ሰር ምልክት በርቷል'}</span>
           </div>
           <div className="card-scroll">
             {you.cards.map((card, index) => {
@@ -310,7 +326,7 @@ export default function GameScreen({
                       })}
                     </div>
                   ))}
-                  <div className="bingo-card-foot">Card {index + 1}</div>
+                  <div className="bingo-card-foot">ካርድ {index + 1}</div>
                 </div>
               );
             })}

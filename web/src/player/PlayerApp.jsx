@@ -37,7 +37,7 @@ export default function PlayerApp() {
       if (err.status === 401) {
         localStorage.removeItem(TOKEN_KEY);
         setToken(null);
-        setAuthError('Your session expired. Reopen the app from Telegram.');
+        setAuthError('ክፍለ ጊዜዎ አልቋል። እባክዎ መተግበሪያውን ከቴሌግራም እንደገና ይክፈቱ።');
       }
     }
   }, []);
@@ -87,13 +87,13 @@ export default function PlayerApp() {
         if (!cancelled) {
           setToken(result.token);
           if (result.user?.isBanned) {
-            setAuthError('This account is suspended.');
+            setAuthError('ይህ መለያ ታግዷል።');
             return;
           }
           setMe(await api('/api/me', { token: result.token }));
         }
       } catch (err) {
-        if (!cancelled) setAuthError(err.message || 'Could not sign in.');
+        if (!cancelled) setAuthError(err.message || 'መግባት አልተቻለም።');
       }
     }
 
@@ -141,14 +141,14 @@ export default function PlayerApp() {
     });
     socket.on('you', (payload) => setYou(payload));
     socket.on('balance', () => refreshMe());
-    socket.on('game:started', () => toast('Numbers are being called. Good luck!'));
+    socket.on('game:started', () => toast('ቁጥሮች እየተጠሩ ነው። መልካም እድል!'));
     socket.on('game:ended', (payload) => {
       const mine = youRef.current?.playerId;
       if (mine && payload.winnerIds?.includes(mine)) {
         haptic('success');
-        toast('🎉 Bingo! You won this round!');
+        toast('🎉 ቢንጎ! በዚህ ዙር አሸንፈዋል!');
       } else {
-        toast('Round finished. Next round is starting…');
+        toast('ዙሩ አልቋል። ቀጣዩ ዙር እየተጀመረ ነው…');
       }
       api('/api/game/state', { token }).then((state) => setYou(state.you || null)).catch(() => {});
     });
@@ -171,9 +171,9 @@ export default function PlayerApp() {
       setYou(state.you || null);
       await refreshMe();
       haptic('light');
-      toast('Game refreshed.');
+      toast('ጨዋታው ተመስተካክሏል።');
     } catch (err) {
-      toast(err.message || 'Could not refresh.', 'error');
+      toast(err.message || 'ማደስ አልተቻለም።', 'error');
     } finally {
       setRefreshing(false);
     }
@@ -184,7 +184,7 @@ export default function PlayerApp() {
     try {
       const result = await api('/api/game/join', { token, method: 'POST', body: { cards } });
       setYou({ cards: result.cards, playerId: result.playerId, roundId: game?.id, hasBingo: false, blocked: false });
-      toast('You joined the round. Good luck! 🍀');
+      toast('ዙሩን ተቀላቅለዋል። መልካም እድል! 🍀');
       haptic('success');
       await refreshMe();
     } catch (err) {
@@ -222,11 +222,11 @@ export default function PlayerApp() {
           <div className="brand-mark">AB</div>
           <h1>Africa Bingo</h1>
           <p>{authError}</p>
-          <p className="muted small">
-            Open this Mini App from the Telegram bot, or enable DEV_MODE on the server for browser testing.
+          <p className="muted small amharic">
+            ይህን መተግበሪያ ከቴሌግራም ቦት ይክፈቱ፣ ወይም ለአሳሽ ሙከራ DEV_MODE ያብሩ።
           </p>
           <button type="button" className="btn primary" onClick={() => window.location.reload()}>
-            Try again
+            እንደገና ይሞክሩ
           </button>
         </div>
       </div>
@@ -238,7 +238,7 @@ export default function PlayerApp() {
       <div className="center-screen">
         <div className="loader">
           <div className="brand-mark">AB</div>
-          <p>Loading Africa Bingo…</p>
+          <p>Africa Bingo በመጫን ላይ…</p>
         </div>
       </div>
     );
@@ -249,7 +249,7 @@ export default function PlayerApp() {
       <TopBar me={me} game={game} onRefresh={refreshGame} refreshing={refreshing} />
 
       {me.user?.isBanned && (
-        <div className="banned-banner">Your account is suspended. Contact support on Telegram.</div>
+        <div className="banned-banner amharic">ይህ መለያ ታግዷል። እባክዎ በቴሌግራም ድጋፍን ያግኙ።</div>
       )}
 
       <main className="player-main">
@@ -270,10 +270,10 @@ export default function PlayerApp() {
       {me.agent && (
         <nav className="bottom-nav">
           <button type="button" className="active">
-            <span>🎱</span>Game
+            <span>🎱</span>ጨዋታ
           </button>
           <Link to="/agent" className="nav-link">
-            <span>🤝</span>Agent
+            <span>🤝</span>ወኪል
           </Link>
         </nav>
       )}

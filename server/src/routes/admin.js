@@ -76,6 +76,7 @@ router.get(
             { username: { contains: search } },
             { firstName: { contains: search } },
             { telegramId: { contains: search } },
+            { phone: { contains: search } },
           ],
         }
       : {};
@@ -94,6 +95,7 @@ router.get(
         telegramId: u.telegramId,
         username: u.username,
         firstName: u.firstName,
+        phone: u.phone,
         balance: u.balance,
         derash: u.derash,
         role: u.role,

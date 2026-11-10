@@ -1066,6 +1066,39 @@ textarea {
   color: #bfdbfe;
   text-shadow: 0 0 22px rgba(59, 130, 246, 0.75);
 }
+.wc-count {
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.wc-winners {
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
+}
+.wc-winner + .wc-winner {
+  padding-top: 12px;
+  border-top: 1px dashed rgba(147, 197, 253, 0.25);
+}
+.wc-winner-head {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 3px;
+}
+.wc-winner-tag {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gold-2);
+  background: rgba(59, 130, 246, 0.16);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
 .wc-name {
   font-size: 16px;
   font-weight: 700;
@@ -1144,9 +1177,13 @@ textarea {
   font-size: 14px;
 }
 .wc-next {
-  margin-top: 6px;
+  position: sticky;
+  bottom: 0;
+  margin-top: 8px;
+  padding: 7px 0 1px;
   font-size: 11px;
   color: var(--muted);
+  background: linear-gradient(180deg, rgba(6, 11, 24, 0), #060b18 45%);
 }
 @keyframes overlayIn {
   from {
