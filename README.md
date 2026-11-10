@@ -341,8 +341,10 @@ HTTPS for Mini Apps.
 
 Admins upload static recordings per number (`num_1`…`num_75`) or announcement (`bingo`,
 `game_start`) in **Game Control → Voice files**. The player app maps the last called number to
-`num_<n>` and plays it when voice is on. When a number has no uploaded recording, the browser
-speaks the call itself in Amharic (`am-ET`) via the Web Speech API, so voice works out of the box.
+`num_<n>` and plays it when voice is on. When a number has no uploaded recording, the app uses an
+installed Amharic voice (`am-ET`) via the Web Speech API; if the device has no Amharic voice (common
+in mobile WebViews), it streams the Amharic call audio instead. Players can also tap any call in the
+`ጥሪዎች` rail to hear it again.
 Uploads accept mp3/ogg/wav/m4a up to 5 MB
 and are stored in `server/uploads/voice`, served from `/uploads/voice/...`. The repository ships with
 no audio assets — record the Amharic numbers once and upload them.

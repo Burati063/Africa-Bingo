@@ -49,9 +49,11 @@ export default function TopBar({ me, game, onRefresh, refreshing, view = 'game',
             {etb(me?.user?.balance)} <small>ETB</small>
           </strong>
         </div>
-        <div className="stat">
+        <div className="stat derash-stat">
           <span>ደራሽ</span>
-          <strong>{me?.user?.derash ?? 0}</strong>
+          <strong>
+            {etb(game?.prizePool)} <small>ETB</small>
+          </strong>
         </div>
         <div className="stat">
           <span>ተጫዋቾች</span>

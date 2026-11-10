@@ -27,19 +27,94 @@ export function amharicCall(number) {
 }
 
 let currentUtterance = null;
+let remoteAudio = null;
+let primedVoice = null;
+let priming = null;
+
+function chooseAmharicVoice(voices) {
+  return (
+    (voices || []).find((voice) => /^am(-|$)/i.test(voice.lang)) ||
+    (voices || []).find((voice) => /amharic|ethiop/i.test(voice.name)) ||
+    null
+  );
+}
 
 export function speechSupported() {
   return typeof window !== 'undefined' && 'speechSynthesis' in window;
 }
 
+/** Cached Amharic voice; voices load asynchronously on most mobile browsers. */
 export function pickAmharicVoice() {
+  if (primedVoice) return primedVoice;
   if (!speechSupported()) return null;
-  const voices = window.speechSynthesis.getVoices();
-  return (
-    voices.find((voice) => /^am(-|$)/i.test(voice.lang)) ||
-    voices.find((voice) => /amharic|ethiop/i.test(voice.name)) ||
-    null
-  );
+  primedVoice = chooseAmharicVoice(window.speechSynthesis.getVoices());
+  return primedVoice;
+}
+
+/** Waits briefly for the browser voice list, then caches an Amharic voice. */
+export function primeVoices() {
+  if (!speechSupported()) return Promise.resolve(null);
+  if (primedVoice || priming) return priming || Promise.resolve(primedVoice);
+  priming = new Promise((resolve) => {
+    const synth = window.speechSynthesis;
+    const finish = () => {
+      primedVoice = chooseAmharicVoice(synth.getVoices());
+      resolve(primedVoice);
+    };
+    if ((synth.getVoices() || []).length) {
+      finish();
+      return;
+    }
+    if (typeof synth.addEventListener === 'function') {
+      synth.addEventListener('voiceschanged', finish, { once: true });
+    }
+    setTimeout(finish, 1200);
+  });
+  return priming;
+}
+
+/**
+ * Remote Amharic audio for calls, used when the device has no Amharic speech
+ * voice installed (common in Telegram's Android WebView).
+ */
+export function callAudioUrl(number) {
+  const q = encodeURIComponent(amharicCall(number));
+  return `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=am&q=${q}`;
+}
+
+export function playRemoteCall(number, onFail) {
+  if (typeof Audio === 'undefined') return false;
+  try {
+    stopCallAudio();
+    remoteAudio = new Audio(callAudioUrl(number));
+    remoteAudio.preload = 'auto';
+    remoteAudio.onerror = () => {
+      remoteAudio = null;
+      if (onFail) onFail();
+    };
+    const played = remoteAudio.play();
+    if (played && typeof played.catch === 'function') {
+      played.catch(() => {
+        remoteAudio = null;
+        if (onFail) onFail();
+      });
+    }
+    return true;
+  } catch {
+    remoteAudio = null;
+    if (onFail) onFail();
+    return false;
+  }
+}
+
+export function stopCallAudio() {
+  if (!remoteAudio) return;
+  try {
+    remoteAudio.pause();
+  } catch {
+    /* ignore */
+  }
+  remoteAudio = null;
 }
 
 export function speakCall(number) {

@@ -555,6 +555,9 @@ textarea {
 .balance-stat strong {
   color: var(--gold-2);
 }
+.derash-stat strong {
+  color: #9ae6b4;
+}
 .call-stat strong.live {
   color: #7db4ff;
   letter-spacing: 0.02em;

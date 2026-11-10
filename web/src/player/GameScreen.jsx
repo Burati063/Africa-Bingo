@@ -2,7 +2,14 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { etb, seconds } from '../format.js';
 import { COLUMNS, RANGES, callLabel } from '../bingo.js';
-import { speakCall, stopSpeaking } from '../voice.js';
+import {
+  pickAmharicVoice,
+  playRemoteCall,
+  primeVoices,
+  speakCall,
+  stopCallAudio,
+  stopSpeaking,
+} from '../voice.js';
 
 
 function countdown(ms) {
@@ -157,6 +164,7 @@ export default function GameScreen({
       try {
         audioRef.current?.pause();
         stopSpeaking();
+        stopCallAudio();
         audioRef.current = new Audio(url);
         audioRef.current.play().catch(() => {});
         return;
@@ -164,8 +172,18 @@ export default function GameScreen({
         /* fall through to speech */
       }
     }
-    speakCall(number);
+    // No uploaded recording: use an installed Amharic voice when available,
+    // otherwise stream Amharic audio for the call.
+    if (pickAmharicVoice()) {
+      speakCall(number);
+      return;
+    }
+    playRemoteCall(number, () => speakCall(number));
   };
+
+  useEffect(() => {
+    primeVoices();
+  }, []);
 
   useEffect(() => {
     if (!voiceOn || !voiceAvailable || !game?.lastCalled) return;
@@ -198,6 +216,7 @@ export default function GameScreen({
       /* ignore */
     }
     stopSpeaking();
+    stopCallAudio();
   }, [voiceOn]);
 
   useEffect(
@@ -208,6 +227,7 @@ export default function GameScreen({
         /* ignore */
       }
       stopSpeaking();
+      stopCallAudio();
     },
     [],
   );
