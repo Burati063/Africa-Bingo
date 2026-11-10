@@ -369,10 +369,6 @@ export default function GameScreen({
                   );
                 })}
               </div>
-              <p className="fine-print amharic">
-                ካርድ ሲመርጡ ወዲያውኑ {etb(perCard)} ETB ከቀሪ ሂሳብዎ ይቀንሳል። አንድ ቁጥር አንድ ጊዜ ብቻ ይመረጣል። ቀሪ ሂሳብ፦{' '}
-                {etb(me?.user?.balance)} ETB
-              </p>
               {you && (
                 <div className="waiting-note amharic">
                   <span className="pulse-dot" /> ተቀላቅለዋል። ተጨማሪ ካርድ መምረጥ ይችላሉ — ጊዜው እስኪያልቅ።
