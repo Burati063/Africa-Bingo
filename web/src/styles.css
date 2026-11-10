@@ -757,6 +757,15 @@ textarea {
   background: rgba(59, 130, 246, 0.14);
   border: 1px solid rgba(96, 165, 250, 0.28);
   flex: none;
+  padding: 0;
+  font-family: inherit;
+  line-height: 1;
+}
+button.call-chip.replay {
+  cursor: pointer;
+}
+button.call-chip.replay:active {
+  transform: scale(0.92);
 }
 .call-chip.current {
   background: linear-gradient(160deg, #60a5fa, #2563eb);

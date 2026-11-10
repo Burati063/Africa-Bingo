@@ -147,25 +147,48 @@ export default function GameScreen({
       .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    if (!voiceOn || !voiceAvailable || !game?.lastCalled) return;
-    if (lastPlayed.current === `${game.id}:${game.lastCalled}`) return;
-    lastPlayed.current = `${game.id}:${game.lastCalled}`;
-    const url = voiceFiles[`num_${game.lastCalled}`];
+  // Plays an uploaded recording when one exists, otherwise speaks the call in
+  // Amharic. Used both for automatic announcements and for tapping a call in
+  // the ጥሪዎች rail to hear it again.
+  const playCall = (number) => {
+    if (!number) return;
+    const url = voiceFiles[`num_${number}`];
     if (url) {
       try {
         audioRef.current?.pause();
         stopSpeaking();
         audioRef.current = new Audio(url);
         audioRef.current.play().catch(() => {});
+        return;
       } catch {
-        /* autoplay may be blocked until first interaction */
+        /* fall through to speech */
       }
-    } else {
-      // No recording for this number: speak the Amharic call instead.
-      speakCall(game.lastCalled);
     }
+    speakCall(number);
+  };
+
+  useEffect(() => {
+    if (!voiceOn || !voiceAvailable || !game?.lastCalled) return;
+    if (lastPlayed.current === `${game.id}:${game.lastCalled}`) return;
+    lastPlayed.current = `${game.id}:${game.lastCalled}`;
+    playCall(game.lastCalled);
   }, [game?.lastCalled, game?.id, voiceOn, voiceAvailable, voiceFiles]);
+
+  // Mobile browsers only allow speech after a user gesture; warm the engine up
+  // once so later automated calls are not silently dropped.
+  useEffect(() => {
+    const unlock = () => {
+      try {
+        const warm = new SpeechSynthesisUtterance(' ');
+        warm.volume = 0;
+        window.speechSynthesis?.speak(warm);
+      } catch {
+        /* unsupported */
+      }
+    };
+    document.addEventListener('pointerdown', unlock, { once: true });
+    return () => document.removeEventListener('pointerdown', unlock);
+  }, []);
 
   useEffect(() => {
     if (voiceOn) return;
@@ -225,6 +248,7 @@ export default function GameScreen({
         </button>
       </div>
 
+      {!windowOpen && (
       <div className="board-wrap">
         <section className="master-board" aria-label="የቢንጎ ሰሌዳ">
           {COLUMNS.map((letter, colIndex) => (
@@ -250,15 +274,23 @@ export default function GameScreen({
           <span className="call-rail-title">ጥሪዎች</span>
           {callHistory.length ? (
             callHistory.map((n) => (
-              <span key={n} className={`call-chip ${game?.lastCalled === n ? 'current' : ''}`}>
+              <button
+                type="button"
+                key={n}
+                className={`call-chip replay ${game?.lastCalled === n ? 'current' : ''}`}
+                onClick={() => playCall(n)}
+                title="ድምጽ አጫውት"
+                aria-label={`${callLabel(n)} ድምጽ አጫውት`}
+              >
                 {callLabel(n)}
-              </span>
+              </button>
             ))
           ) : (
             <span className="call-chip idle">--</span>
           )}
         </aside>
       </div>
+      )}
 
       {isWaiting && (
         <div className="join-panel">
