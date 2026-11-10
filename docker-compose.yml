@@ -1,0 +1,27 @@
+services:
+  bingo:
+    build: .
+    restart: unless-stopped
+    ports:
+      - '4000:4000'
+    environment:
+      PORT: 4000
+      NODE_ENV: production
+      DATABASE_URL: file:/data/prod.db
+      JWT_SECRET: ${JWT_SECRET:-please-change-this-secret}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:4000}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:4000}
+      DEV_MODE: ${DEV_MODE:-false}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@bingo.et}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin@12345}
+      AGENT_EMAIL: ${AGENT_EMAIL:-agent@bingo.et}
+      AGENT_PASSWORD: ${AGENT_PASSWORD:-Agent@12345}
+    volumes:
+      - bingo-data:/data
+      - bingo-uploads:/app/server/uploads
+
+volumes:
+  bingo-data:
+  bingo-uploads:

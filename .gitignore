@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+*.log
+server/prisma/dev.db
+server/prisma/dev.db-journal
+server/uploads/voice/*
+!server/uploads/voice/.gitkeep
+~$*
+.DS_Store
+tools/*.exe
+tools/*.zip

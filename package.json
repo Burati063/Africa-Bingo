@@ -1,0 +1,23 @@
+{
+  "name": "ethio-bingo",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Ethiopian Bingo Telegram Mini App with player app, admin panel and agent dashboard",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "setup": "npm install && npm --workspace server run db:push && npm --workspace server run seed",
+    "dev": "concurrently -n server,web -c green,cyan \"npm --workspace server run dev\" \"npm --workspace web run dev\"",
+    "dev:server": "npm --workspace server run dev",
+    "dev:web": "npm --workspace web run dev",
+    "build": "npm --workspace web run build",
+    "start": "npm --workspace server run start",
+    "test": "npm --workspace server run test"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "puppeteer-core": "^25.16.0"
+  }
+}

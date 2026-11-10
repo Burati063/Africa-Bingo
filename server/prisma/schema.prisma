@@ -1,0 +1,236 @@
+// Prisma schema. Money is stored as integer santim (1 ETB = 100 santim).
+// SQLite is used for zero-config local development. To move to PostgreSQL,
+// change the provider to "postgresql", set DATABASE_URL and run `prisma migrate`.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                Int                @id @default(autoincrement())
+  telegramId        String             @unique
+  username          String?
+  firstName         String?
+  phone             String?
+  balance           Int                @default(0)
+  derash            Int                @default(0)
+  role              String             @default("player") // player | agent | admin
+  referredByAgentId Int?
+  referredByAgent   Agent?             @relation("AgentReferredUsers", fields: [referredByAgentId], references: [id])
+  hasPlayed         Boolean            @default(false)
+  isBanned          Boolean            @default(false)
+  createdAt         DateTime           @default(now())
+  agent             Agent?             @relation("AgentAccount")
+  transactions      Transaction[]
+  gamePlayers       GamePlayer[]
+  withdrawals       Withdrawal[]
+  deposits          Deposit[]
+  referral          Referral?
+  agentTransactions AgentTransaction[] @relation("CommissionSourceUser")
+
+  @@index([referredByAgentId])
+}
+
+model Agent {
+  id                  Int               @id @default(autoincrement())
+  userId              Int               @unique
+  user                User              @relation("AgentAccount", fields: [userId], references: [id])
+  referralCode        String            @unique
+  commissionBalance   Int               @default(0)
+  totalEarned         Int               @default(0)
+  activeReferralCount Int               @default(0)
+  activityBonusPaid   Boolean           @default(false)
+  isActive            Boolean           @default(true)
+  createdAt           DateTime          @default(now())
+  referredUsers       User[]            @relation("AgentReferredUsers")
+  referrals           Referral[]
+  transactions        AgentTransaction[]
+  withdrawals         AgentWithdrawal[]
+  staffAccount        StaffAccount?
+}
+
+model StaffAccount {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  role         String   @default("admin") // admin | agent
+  agentId      Int?     @unique
+  agent        Agent?   @relation(fields: [agentId], references: [id])
+  createdAt    DateTime @default(now())
+}
+
+model Referral {
+  id        Int      @id @default(autoincrement())
+  agentId   Int
+  userId    Int      @unique
+  agent     Agent    @relation(fields: [agentId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([agentId])
+}
+
+model AgentTransaction {
+  id              Int      @id @default(autoincrement())
+  agentId         Int
+  type            String // deposit_bonus | activity_bonus | gameplay_commission | withdrawal | adjustment
+  amount          Int // signed for adjustments
+  referenceUserId Int?
+  status          String   @default("completed")
+  note            String?
+  createdAt       DateTime @default(now())
+  agent           Agent    @relation(fields: [agentId], references: [id])
+  referenceUser   User?    @relation("CommissionSourceUser", fields: [referenceUserId], references: [id])
+
+  @@index([agentId, createdAt])
+}
+
+model AgentWithdrawal {
+  id            Int       @id @default(autoincrement())
+  agentId       Int
+  amount        Int
+  bank          String
+  accountNumber String
+  accountName   String
+  status        String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  adminNotes    String?
+  createdAt     DateTime  @default(now())
+  processedAt   DateTime?
+  agent         Agent     @relation(fields: [agentId], references: [id])
+
+  @@index([status])
+}
+
+model Game {
+  id              Int           @id @default(autoincrement())
+  stake           Int
+  status          String        @default("WAITING") // WAITING | CALLING | ENDED
+  prizePool       Int           @default(0)
+  platformFee     Int           @default(0)
+  botCount        Int           @default(0)
+  forcedWinnerId  Int?
+  forcedWinnerType String?
+  winnerId        Int?
+  createdAt       DateTime      @default(now())
+  startedAt       DateTime?
+  endedAt         DateTime?
+  players         GamePlayer[]
+  calledNumbers   CalledNumber[]
+
+  @@index([status])
+}
+
+model GamePlayer {
+  id        Int       @id @default(autoincrement())
+  gameId    Int
+  userId    Int?
+  isBot     Boolean   @default(false)
+  botName   String?
+  cards     String // JSON: array of 5x5 cards (columns B,I,N,G,O)
+  hasBingo  Boolean   @default(false)
+  isWinner  Boolean   @default(false)
+  winAmount Int       @default(0)
+  paidStake Int       @default(0)
+  joinedAt  DateTime  @default(now())
+  game      Game      @relation(fields: [gameId], references: [id])
+  user      User?     @relation(fields: [userId], references: [id])
+
+  @@index([gameId])
+  @@index([userId])
+}
+
+model CalledNumber {
+  id       Int      @id @default(autoincrement())
+  gameId   Int
+  number   Int
+  calledAt DateTime @default(now())
+  game     Game     @relation(fields: [gameId], references: [id])
+
+  @@unique([gameId, number])
+}
+
+model Transaction {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  type      String // deposit | withdrawal | stake | win | adjustment | refund
+  amount    Int // positive except audited manual adjustments
+  status    String   @default("completed") // completed | pending | rejected
+  reference String?
+  meta      String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([type, createdAt])
+}
+
+model Deposit {
+  id            Int       @id @default(autoincrement())
+  userId        Int
+  amount        Int
+  provider      String    @default("unknown") // telebirr | cbebirr | cbe | unknown
+  txRef         String    @unique // receipt / transaction reference, also the dedupe key
+  providerRef   String?
+  paymentMethod String? // telebirr | cbe | cbebirr
+  receiptUrl    String?
+  rawSms        String?
+  receiptData   String?
+  status        String    @default("PENDING_REVIEW") // VERIFIED | PENDING_REVIEW | REJECTED
+  reviewNote    String?
+  autoRetry     Boolean   @default(false) // receipt may be re-checked automatically
+  retryCount    Int       @default(0)
+  nextCheckAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @default(now()) @updatedAt
+  verifiedAt    DateTime?
+  user          User      @relation(fields: [userId], references: [id])
+
+  @@index([status])
+  @@index([status, autoRetry, nextCheckAt])
+}
+
+model Withdrawal {
+  id            Int       @id @default(autoincrement())
+  userId        Int
+  amount        Int
+  bank          String
+  accountNumber String
+  accountName   String
+  status        String    @default("PENDING")
+  adminNotes    String?
+  createdAt     DateTime  @default(now())
+  processedAt   DateTime?
+  user          User      @relation(fields: [userId], references: [id])
+
+  @@index([status])
+}
+
+model VoiceFile {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique // num_1 .. num_75, bingo, game_start
+  number    Int?
+  label     String?
+  fileUrl   String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model AdminAction {
+  id         Int      @id @default(autoincrement())
+  staffId    Int?
+  actionType String
+  details    String
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model PlatformSetting {
+  key   String @id
+  value String
+}

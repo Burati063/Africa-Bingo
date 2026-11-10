@@ -1,0 +1,9 @@
+node_modules
+web/dist
+server/prisma/dev.db
+server/prisma/dev.db-journal
+server/uploads
+.env
+.git
+*.log
+Telegram mini app.docx
