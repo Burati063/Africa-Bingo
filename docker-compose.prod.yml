@@ -52,7 +52,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 5
-      # First boot runs `prisma db push` and the seed, which is slow on ARM.
+      # First boot applies migrations and the seed, which is slow on ARM.
       start_period: 180s
     stop_grace_period: 30s
     logging:

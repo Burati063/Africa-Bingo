@@ -27,7 +27,7 @@ autoscaling on any host.
 1. Sign up at <https://neon.tech> (GitHub login works, no payment method asked).
 2. Create a project, region **Frankfurt** (closest to Ethiopia among free options).
 3. Copy the connection string. Use the **direct** hostname — the one *without* `-pooler` —
-   because the container runs `prisma db push` on every boot:
+   because the container runs `prisma migrate deploy` on every boot:
 
    ```
    postgresql://USER:PASSWORD@ep-xxxx.eu-central-1.aws.neon.tech/neondb?sslmode=require
@@ -66,8 +66,8 @@ Use passwords you are willing to lose — the seed writes them into the database
    | `ADMIN_PASSWORD`, `AGENT_PASSWORD` | from step 2 |
    | `DEPOSIT_TELEBIRR_ACCOUNT` / `_NAME`, `DEPOSIT_CBE_ACCOUNT` / `_NAME` | your deposit accounts |
 
-4. Deploy. The first boot builds the web app, runs `prisma db push`, seeds settings and staff
-   accounts, then starts the server. Watch the log for `Seed complete` and
+4. Deploy. The first boot builds the web app, applies the Prisma migrations, seeds settings and
+   staff accounts, then starts the server. Watch the log for `Seed complete` and
    `listening on`.
 
 If the URL is not known when the blueprint asks for it, deploy once with a placeholder, copy the
@@ -90,7 +90,8 @@ service.
 ## 5. Keep it awake (free)
 
 1. Create a free monitor at <https://uptimerobot.com> (HTTP(s), no card).
-2. URL `https://ethio-bingo-xxxx.onrender.com/api/health`, interval **5 minutes**.
+2. URL `https://ethio-bingo-xxxx.onrender.com/api/health`, interval **5 minutes** (it returns 503
+   when the database is down, so the monitor doubles as a database alert).
 3. Do not ping `/`, `/robots.txt` or static files: Render answers those without waking the service.
 
 Budget: 750 h/month against a ~744 h month, so this single service is all you get. A second free
@@ -110,6 +111,13 @@ dashboard: `/agent`.
 
 ## 7. Operating notes
 
+- **Boot is retried, not fatal.** The container waits for PostgreSQL before touching the schema:
+  `server/scripts/startup.mjs` retries `prisma migrate deploy` and the seed with exponential backoff (10
+  attempts, ~2 min by default) before starting the server, so a slow Neon start no longer turns into
+  a Render restart loop.
+- **Health means the database is reachable.** `/api/health` runs a `SELECT 1` (cached 5 s) and
+  answers `200 {"ok":true,"db":"up"}` only when it succeeds; it returns `503` with `db:"down"`
+  during a database outage. Render and the uptime monitor both key off this.
 - **Deploys** are triggered by pushes to `main` (`autoDeploy: true`). Each deploy wipes the container
   filesystem: re-upload voice clips afterwards. Balances, games and users live in Postgres and are
   unaffected.
@@ -135,10 +143,26 @@ npm run dev
 `npm run db:sqlite` (in `server/`) regenerates the SQLite schema from `prisma/schema.prisma`, so the
 models are edited in one place only. `prisma/schema.sqlite.prisma` is generated and git-ignored.
 
+## Schema changes
+
+Migrations live in `server/prisma/migrations/` and every boot applies them with `prisma migrate
+deploy` before seeding. To change the schema:
+
+```bash
+cd server
+# edit prisma/schema.prisma
+npm run db:migrate -- --name add_something   # writes the SQL; needs a Postgres DATABASE_URL
+npm run db:sqlite                            # refresh the local SQLite copy
+```
+
+Commit the generated migration together with the schema change. Never edit a migration that has
+already been applied. A database created before migrations existed (with `prisma db push`) must be
+baselined once: `npx prisma migrate resolve --applied 20261115120000_init`, then redeploy.
+
 To run the **production** schema locally (parity check before deploying):
 
 ```bash
 cd server
-DATABASE_URL='postgresql://…neon.tech/neondb?sslmode=require' npm run db:push
+DATABASE_URL='postgresql://…neon.tech/neondb?sslmode=require' npm run db:deploy
 DATABASE_URL='postgresql://…' npm run seed
 ```

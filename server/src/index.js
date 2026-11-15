@@ -38,7 +38,30 @@ app.use(cors({ origin: corsOrigins.length ? corsOrigins : true }));
 app.use(express.json({ limit: '1mb' }));
 app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '7d' }));
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+// Health check reports database readiness, not just that the process answers.
+// A deploy only goes live after `scripts/startup.mjs` has applied migrations and
+// seeded, so a reachable database here means the app can actually serve. The
+// result is cached briefly so a monitor pinging every minute is cheap.
+let healthDbUp = false;
+let healthCheckedAt = 0;
+const HEALTH_CACHE_MS = 5000;
+app.get('/api/health', async (_req, res) => {
+  if (Date.now() - healthCheckedAt > HEALTH_CACHE_MS) {
+    try {
+      await prisma.$queryRawUnsafe('SELECT 1');
+      healthDbUp = true;
+    } catch (err) {
+      healthDbUp = false;
+      console.warn(`[health] database unreachable: ${err.message}`);
+    }
+    healthCheckedAt = Date.now();
+  }
+  res.status(healthDbUp ? 200 : 503).json({
+    ok: healthDbUp,
+    db: healthDbUp ? 'up' : 'down',
+    time: new Date().toISOString(),
+  });
+});
 app.get(
   '/api/voice-files',
   asyncHandler(async (_req, res) => {

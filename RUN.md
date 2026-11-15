@@ -70,8 +70,7 @@ phone/account, update these values (and the account instructions shown in the wa
 
 ```bash
 cd server
-npx prisma db push
-npx prisma generate
+npm run db:sqlite   # generates the SQLite schema copy, pushes dev.db, generates the client
 npm run seed
 cd ..
 ```
@@ -230,7 +229,7 @@ If the app shows "Could not sign in", the `initData` was rejected — check that
 |---|---|
 | `EADDRINUSE :::4000` | An old server is still running: `netstat -ano \| grep ':4000'` then `taskkill //PID <pid> //F`. |
 | Admin/agent login fails | Re-run `npm run seed` (from `server`). |
-| Prisma "database is locked" / missing tables | Stop the server, run `npx prisma db push` in `server`. |
+| Prisma "database is locked" / missing tables | Stop the server, run `npm run db:sqlite` in `server`. |
 | Wallet screen still shows the old SMS box | Rebuild the frontend: `npm run build`, then restart the server. |
 | Telegram opens a blank page | The tunnel is down or the BotFather URL is stale; restart the tunnel and update the URL. |
 | Deposit always goes to review | Receipt not payable to the configured account, PDF receipt, or provider page not reachable — check `server` logs and the admin review row. |

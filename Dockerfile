@@ -24,4 +24,4 @@ COPY server ./server
 RUN mkdir -p /app/server/uploads/voice /data
 WORKDIR /app/server
 EXPOSE 4000
-CMD ["sh", "-c", "npx prisma db push --skip-generate && node prisma/seed.js && node src/index.js"]
+CMD ["node", "scripts/startup.mjs"]

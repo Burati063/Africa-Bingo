@@ -20,7 +20,7 @@ npm install
 cp server/.env.example server/.env
 
 # 3. Create the database and seed admin + demo agent
-npm --workspace server run db:push
+npm --workspace server run db:sqlite
 npm --workspace server run seed
 
 # 4. Run API on :4000 and Vite on :5173
@@ -293,8 +293,8 @@ Auth via `auth.token` (player JWT). Events emitted by the server:
 The canonical schema targets PostgreSQL. Local development still uses SQLite with no setup:
 `npm run db:sqlite` generates `prisma/schema.sqlite.prisma` from the same models and pushes `dev.db`
 (`npm run setup` and `npm run dev` do it for you). For a real Postgres database, point
-`DATABASE_URL` at it and run `npm run db:push` in `server/`; move to `prisma migrate deploy` once you
-have versioned migrations.
+`DATABASE_URL` at it and run `npm run db:deploy` in `server/`. The schema ships as versioned
+migrations in `server/prisma/migrations/`, which the container applies on every boot.
 
 ---
 
@@ -332,7 +332,7 @@ cp server/.env.example .env   # fill in real secrets
 docker compose up --build -d
 ```
 
-The container runs `prisma db push`, seeds admin/agent idempotently, then starts the API and serves
+The container applies pending Prisma migrations, seeds admin/agent idempotently, then starts the API and serves
 the built web app on port 4000. PostgreSQL data and uploaded media live in named volumes —
 `docker-compose.yml` starts a `postgres:16-alpine` service alongside the app.
 Set `DEV_MODE=false`, a strong `JWT_SECRET`, `PUBLIC_URL`, `TELEGRAM_BOT_TOKEN` and

@@ -245,8 +245,8 @@ Do these in order as volume grows:
 
 1. **PostgreSQL** — done: the schema targets `postgresql`, Compose runs a `postgres:16-alpine`
    service, and nightly `pg_dump` backups are installed by `deploy/oracle-bootstrap.sh`. Next step is
-   moving from `prisma db push` to versioned `prisma migrate deploy` (create an initial migration
-   first).
+   schema changes ship as versioned migrations (`prisma migrate deploy` on boot) instead of
+   `prisma db push`.
 2. **Multi-instance realtime** — move the game engine to a single worker process and add the
    Socket.IO Redis adapter before running more than one app container.
 3. **Payments** — replace receipt scraping with a provider webhook (Telebirr/CBE merchant API) so
@@ -305,15 +305,11 @@ the certificate automatically.
 500 Telegram players connected at once is mostly a **WebSocket + database** problem, not CPU. This
 app already pushes state every second and persists every call, so do these in order:
 
-1. **Keep the tuned SQLite for one instance; move to PostgreSQL when you scale out.** The app now
-   enables WAL, `busy_timeout=8000`, a larger cache and `temp_store=MEMORY` at startup, which is
-   enough for 500 players on one process (one call every 3 s; joins only in the 30 s window).
-   Switch to PostgreSQL when you add a second app instance, run multiple writers, or pass roughly
-   1,000 concurrent players:
-   - In `server/prisma/schema.prisma` set `provider = "postgresql"`.
-   - Add a `postgres:16-alpine` service with a volume and
-     `DATABASE_URL=postgresql://bingo:<password>@postgres:5432/bingo?schema=public`.
-   - Run `npx prisma migrate deploy` on boot (or `prisma db push` for the first cut) and seed once.
+1. **PostgreSQL with versioned migrations — already in place.** Compose runs `postgres:16-alpine`
+   with a `bingo-pgdata` volume, `DATABASE_URL=postgresql://bingo:<password>@db:5432/bingo`, and the
+   container applies `server/prisma/migrations/` with `prisma migrate deploy` on every boot. Add new
+   schema changes with `npm run db:migrate -- --name <change>` in `server/` and commit the generated
+   migration; never edit an applied migration.
 2. **Run exactly one game-engine process.** The round lives in memory. Do not scale the app container
    horizontally without moving the engine to a worker; the tick, timers and claims would split.
    For 500 players one Node process is enough — the per-second tick only broadcasts one snapshot and
@@ -557,5 +553,7 @@ upgrade/downgrade incorrectly), do not delete the boot volume, and stay within 1
 | `502` from Caddy | `bingo` container is unhealthy: `docker compose -f docker-compose.prod.yml logs bingo` |
 | Telegram opens a blank page | `PUBLIC_URL`/BotFather URL is wrong, `DEV_MODE=true`, or the container is down |
 | “Could not sign in” in Telegram | `TELEGRAM_BOT_TOKEN` does not belong to the bot whose Mini App you opened |
-| `ECONNREFUSED … 5432` on boot | PostgreSQL is still starting; Compose waits for `pg_isready`, and the app retries the first `db push` on restart |
+| `ECONNREFUSED … 5432` on boot | PostgreSQL is still starting; Compose waits for `pg_isready` and `scripts/startup.mjs` retries `migrate deploy` with backoff, so it usually clears itself. If it keeps failing, check `POSTGRES_PASSWORD` matches in `.env` |
+| `P3005` / “database schema is not empty” | The database was created with `prisma db push` before migrations existed. Baseline it once: `npx prisma migrate resolve --applied 20261115120000_init`, then restart |
+| `/api/health` returns `503 db:"down"` | The app is up but cannot reach PostgreSQL; check the `db` container and the `DATABASE_URL` credentials |
 | 500 players disconnect | Raise `nofile` (already 65535 in Compose), watch CPU/RAM with `docker stats` |

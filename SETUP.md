@@ -41,8 +41,7 @@ npm install
 
 ```bash
 cd server
-npx prisma db push
-npx prisma generate
+npm run db:sqlite   # generates the SQLite schema copy, pushes dev.db, generates the client
 npm run seed
 cd ..
 ```
