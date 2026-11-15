@@ -136,6 +136,14 @@ for i in $(seq 1 30); do
   sleep 5
 done
 
+log "Nightly database backup (kept 14 days)"
+mkdir -p /opt/ethio-bingo-backups
+cat > /etc/cron.d/ethio-bingo-backup <<'EOF'
+0 2 * * * root docker run --rm -v ethio-bingo_bingo-data:/data -v /opt/ethio-bingo-backups:/backup alpine tar czf /backup/db-$(date +\%F).tgz -C /data . && find /opt/ethio-bingo-backups -name 'db-*.tgz' -mtime +14 -delete
+EOF
+chmod 644 /etc/cron.d/ethio-bingo-backup
+echo "backup cron installed (copy /opt/ethio-bingo-backups off the machine regularly)"
+
 if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
   log "Pointing the Telegram menu button at https://$DOMAIN"
   curl -fsS "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setChatMenuButton" \

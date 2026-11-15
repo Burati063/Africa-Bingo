@@ -5,6 +5,9 @@
 #   docker compose -f docker-compose.prod.yml up -d --build
 #
 # Player app: https://$DOMAIN/ · Admin: https://$DOMAIN/admin · Agent: https://$DOMAIN/agent
+# Pinned project name so volume names are stable (the backup cron uses them).
+name: ethio-bingo
+
 services:
   bingo:
     build: .
