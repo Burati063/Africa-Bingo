@@ -27,6 +27,36 @@ webhooks, 2FA for staff, off-site backups, external uptime monitoring.
 
 ---
 
+## Fast path — one command on a fresh Ubuntu VM
+
+On a brand-new Oracle Always Free (or any) Ubuntu 22.04/24.04 box, SSH in and run:
+
+```bash
+curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/Burati063/Africa-Bingo/main/deploy/oracle-bootstrap.sh
+# or, from a clone: sudo bash deploy/oracle-bootstrap.sh
+
+sudo DOMAIN=bingo.123-45-67-89.sslip.io \
+     TELEGRAM_BOT_TOKEN=<token> \
+     TELEGRAM_BOT_USERNAME=etioricabingo_bot \
+     ADMIN_EMAIL=<your email> ADMIN_PASSWORD='<16+ chars>' \
+     bash bootstrap.sh
+```
+
+It installs Docker, opens only 22/80/443, applies the kernel tuning needed for 1000+ WebSockets,
+writes a production `.env`, builds the stack, waits for `/api/health`, and points the bot's menu
+button at the new HTTPS URL. Re-running it pulls the latest code and restarts without touching the
+`bingo-data` volume.
+
+**No domain?** Use `sslip.io`: if the server IP is `123.45.67.89`, set
+`DOMAIN=bingo.123-45-67-89.sslip.io`. It resolves to that IP for free, and Caddy still gets a real
+Let's Encrypt certificate, which is what Telegram requires. A real domain is better for a paid
+product, but it is not a blocker for the first launch.
+
+**Oracle-specific:** the VM's Security List must allow TCP 80 and 443 from `0.0.0.0/0`, otherwise
+Caddy never gets a certificate. The script cannot change the VCN for you.
+
+---
+
 ## Phase 1 — Server and DNS (30–45 min)
 
 1. **VPS:** Ubuntu 22.04/24.04, 2 vCPU / 2 GB RAM / 40 GB SSD (Hetzner, DigitalOcean, Contabo, etc.).
@@ -261,7 +291,7 @@ the certificate automatically.
 
 ---
 
-## Serving 500+ concurrent players
+## Serving 1000+ concurrent players
 
 500 Telegram players connected at once is mostly a **WebSocket + database** problem, not CPU. This
 app already pushes state every second and persists every call, so do these in order:
@@ -279,7 +309,11 @@ app already pushes state every second and persists every call, so do these in or
    horizontally without moving the engine to a worker; the tick, timers and claims would split.
    For 500 players one Node process is enough — the per-second tick only broadcasts one snapshot and
    a single INSERT per call.
-3. **Tune the host:** 2 vCPU / 2–4 GB RAM is sufficient for 500 concurrent sockets on Node 20.
+3. **Tune the host:** 2 vCPU / 2–4 GB RAM is sufficient for 500 concurrent sockets on Node 20
+   (Oracle Always Free gives 2–4 ARM OCPU / 12–24 GB, so 1000 is headroom, not a stretch).
+   `deploy/oracle-bootstrap.sh` writes `/etc/sysctl.d/99-ethio-bingo.conf` (`somaxconn`, SYN backlog,
+   ephemeral port range, `fs.file-max`) for 1000+ sockets; without it the kernel drops connections
+   before Node sees them.
    Raise the file-descriptor limit (`LimitNOFILE=65535` for the Docker service) and keep Node on the
    host network behind Caddy.
 4. **Put Caddy in front** (already in Phase 3) for TLS termination, gzip/zstd and HTTP/2. Enable

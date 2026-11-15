@@ -15,9 +15,22 @@ import { linkReferral } from '../agents.js';
 
 const router = Router();
 
-const loginLimiter = rateLimit({
+// Mobile carriers put thousands of Telegram players behind a handful of NAT
+// IPs, so player logins only count when they fail. At 1000 concurrent players a
+// per-IP attempt limit rejected real users on launch.
+const playerLoginLimiter = rateLimit({
   windowMs: 60 * 1000,
-  limit: 30,
+  limit: 600,
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'ብዙ የመግቢያ ሙከራዎች። ከአንድ ደቂቃ በኋላ እንደገና ይሞክሩ።' },
+});
+
+// Staff logins stay tight: there is one account per person, not a NAT crowd.
+const staffLoginLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 20,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'ብዙ የመግቢያ ሙከራዎች። ከአንድ ደቂቃ በኋላ እንደገና ይሞክሩ።' },
@@ -58,7 +71,7 @@ export function referralLinkFor(code) {
 
 router.post(
   '/telegram',
-  loginLimiter,
+  playerLoginLimiter,
   asyncHandler(async (req, res) => {
     const { initData, startParam, devTelegramId, devFirstName, devUsername } = req.body || {};
     if (req.user?.isBanned) throw new AppError('ይህ መለያ ታግዷል።', 403);
@@ -107,7 +120,7 @@ router.post(
 
 router.post(
   '/staff/login',
-  loginLimiter,
+  staffLoginLimiter,
   asyncHandler(async (req, res) => {
     const email = String(req.body?.email || '').trim().toLowerCase();
     const password = String(req.body?.password || '');
