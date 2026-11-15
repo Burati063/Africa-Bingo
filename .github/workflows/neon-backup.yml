@@ -1,0 +1,37 @@
+name: Neon backup
+
+# Daily pg_dump of the live database. GitHub-hosted runners are always on, so
+# this needs no server of your own.
+#
+# Setup: add the repository secret NEON_DATABASE_URL with the direct (non
+# "-pooler") Neon connection string. Scheduled workflows only run on the default
+# branch, and GitHub disables them after 60 days without repository activity.
+on:
+  schedule:
+    - cron: '0 1 * * *' # 01:00 UTC (04:00 in Addis Ababa)
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dump database
+        env:
+          DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+          BACKUP_DIR: ${{ runner.temp }}/backups
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::NEON_DATABASE_URL secret is not set"
+            exit 1
+          fi
+          bash deploy/neon-backup.sh
+
+      - name: Upload dump
+        uses: actions/upload-artifact@v4
+        with:
+          name: bingo-backup-${{ github.run_id }}
+          path: ${{ runner.temp }}/backups/*.sql.gz
+          retention-days: 14
+          if-no-files-found: error

@@ -121,9 +121,11 @@ dashboard: `/agent`.
 - **Deploys** are triggered by pushes to `main` (`autoDeploy: true`). Each deploy wipes the container
   filesystem: re-upload voice clips afterwards. Balances, games and users live in Postgres and are
   unaffected.
-- **Backups**: Neon free keeps a short point-in-time history; export a `pg_dump` from your machine
-  regularly if the ledger matters:
-  `pg_dump "$DATABASE_URL" > bingo-$(date +%F).sql`.
+- **Backups**: Neon free keeps a short point-in-time history, which is not a backup strategy for a
+  ledger. Run `deploy/neon-backup.sh` (needs only `DATABASE_URL`; falls back to Docker when `pg_dump`
+  is not installed) or enable the scheduled `.github/workflows/neon-backup.yml`, which stores a daily
+  dump as a 14-day workflow artifact. Restore with
+  `gunzip -c bingo-*.sql.gz | psql "$DATABASE_URL"`.
 - **Sleeping mid-game**: if no traffic arrives for 15 minutes the process stops and in-flight rounds
   are lost. The 5-minute monitor prevents this; keep it running.
 - **Outbound email** is blocked on free Render services. This app does not send email today, so this

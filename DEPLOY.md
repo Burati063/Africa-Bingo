@@ -215,7 +215,9 @@ cd /opt/ethio-bingo && docker compose -f docker-compose.prod.yml exec -T db \
 ```
 
 Put that in a small script (for example `/usr/local/bin/ethio-bingo-backup`) and call it from cron;
-`deploy/oracle-bootstrap.sh` installs exactly that.
+`deploy/oracle-bootstrap.sh` installs exactly that. For a managed database (Neon on Render),
+`deploy/neon-backup.sh` does the same over `DATABASE_URL`, with retention pruning and a Docker
+fallback when `pg_dump` is not installed.
 
 Copy `/opt/backups` off the server (object storage or another host). Test a restore quarterly.
 
