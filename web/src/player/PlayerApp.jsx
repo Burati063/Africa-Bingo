@@ -4,6 +4,7 @@ import { io } from 'socket.io-client';
 import { api } from '../api.js';
 import { etb } from '../format.js';
 import { haptic, tg } from '../telegram.js';
+import { speakPhrase } from '../voice.js';
 import { useToast } from '../components/Toast.jsx';
 import TopBar from './TopBar.jsx';
 import GameScreen from './GameScreen.jsx';
@@ -26,11 +27,13 @@ export default function PlayerApp() {
   const toast = useToast();
   const youRef = useRef(null);
   const gameRef = useRef(null);
+  const voiceOnRef = useRef(null);
   const authStarted = useRef(false);
   const phoneAsked = useRef(false);
 
   youRef.current = you;
   gameRef.current = game;
+  voiceOnRef.current = voiceOn;
 
   const refreshMe = useCallback(async () => {
     const tk = localStorage.getItem(TOKEN_KEY);
@@ -146,19 +149,23 @@ export default function PlayerApp() {
     });
     socket.on('you', (payload) => setYou(payload));
     socket.on('balance', () => refreshMe());
-    socket.on('game:started', () => toast('ቁጥሮች እየተጠሩ ነው። መልካም እድል!'));
+    socket.on('game:started', () => {
+      toast('ቁጥሮች እየተጠሩ ነው። መልካም እድል!');
+      if (voiceOnRef.current && me?.config?.voiceEnabled !== false) speakPhrase('ጨዋታው ተጀመረ');
+    });
     socket.on('game:ended', (payload) => {
       const mine = youRef.current?.playerId;
       if (mine && payload.winnerIds?.includes(mine)) {
         haptic('success');
         toast('🎉 ቢንጎ! በዚህ ዙር አሸንፈዋል!');
+        if (voiceOnRef.current && me?.config?.voiceEnabled !== false) speakPhrase('ቢንጎ');
       } else {
         toast('ዙሩ አልቋል። ቀጣዩ ዙር እየተጀመረ ነው…');
       }
       api('/api/game/state', { token }).then((state) => setYou(state.you || null)).catch(() => {});
     });
     return () => socket.disconnect();
-  }, [token, refreshMe, toast]);
+  }, [token, refreshMe, toast, me?.config?.voiceEnabled]);
 
   const navigate = (next) => {
     setView(next);
@@ -236,7 +243,7 @@ export default function PlayerApp() {
       <div className="center-screen">
         <div className="fatal-card">
           <Logo size={64} />
-          <h1>Africa Bingo</h1>
+          <h1>Ethio Bingo</h1>
           <p>{authError}</p>
           <p className="muted small amharic">
             ይህን መተግበሪያ ከቴሌግራም ቦት ይክፈቱ፣ ወይም ለአሳሽ ሙከራ DEV_MODE ያብሩ።
@@ -254,8 +261,8 @@ export default function PlayerApp() {
       <div className="center-screen">
         <div className="loader branded-loader">
           <Logo size={84} />
-          <strong className="loader-name">AFRICA BINGO</strong>
-          <p className="amharic">አፍሪቃ ቢንጎ በመጫን ላይ…</p>
+          <strong className="loader-name">ETHIO BINGO</strong>
+          <p className="amharic">ኢትዮ ቢንጎ በመጫን ላይ…</p>
           <span className="loader-bar"><span /></span>
         </div>
       </div>
@@ -267,6 +274,7 @@ export default function PlayerApp() {
       <TopBar
         me={me}
         game={game}
+        you={you}
         onRefresh={refreshGame}
         refreshing={refreshing}
         view={view}

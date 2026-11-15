@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { api } from '../api.js';
 import { etb, seconds } from '../format.js';
 import { COLUMNS, RANGES, callLabel } from '../bingo.js';
 import {
-  pickAmharicVoice,
+  playCallClip,
   playRemoteCall,
+  preloadCallClips,
   primeVoices,
   speakCall,
   stopCallAudio,
@@ -93,7 +93,7 @@ function WinnerOverlay({ game, you }) {
                               key={`${col}-${row}`}
                               className={`wc-cell ${marked ? 'marked' : ''} ${selected ? 'selected' : ''} ${n === 0 ? 'free' : ''}`}
                             >
-                              {n === 0 ? '★' : n}
+                              {n === 0 ? 'F' : n}
                             </span>
                           );
                         }),
@@ -134,51 +134,25 @@ export default function GameScreen({
   maxCards: maxCardsProp,
 }) {
   const maxCards = Math.max(1, Math.min(432, Math.floor(Number(maxCardsProp) || 432)));
-  const [voiceFiles, setVoiceFiles] = useState({});
   const lastPlayed = useRef(null);
-  const audioRef = useRef(null);
+  // Numbers show red the instant they are tapped, before the server confirms the
+  // purchase; the entry is dropped again if the join fails.
+  const [pendingPicks, setPendingPicks] = useState(() => new Set());
 
   const called = useMemo(() => new Set(game?.calledNumbers || []), [game?.calledNumbers]);
   const callHistory = useMemo(
-    () => [...(game?.calledNumbers || [])].slice(-8).reverse(),
+    () => [...(game?.calledNumbers || [])].slice(-4).reverse(),
     [game?.calledNumbers],
   );
 
-  useEffect(() => {
-    api('/api/voice-files')
-      .then((files) => {
-        const map = {};
-        for (const file of files) map[file.key] = file.fileUrl;
-        setVoiceFiles(map);
-      })
-      .catch(() => {});
-  }, []);
-
-  // Plays an uploaded recording when one exists, otherwise speaks the call in
-  // Amharic. Used both for automatic announcements and for tapping a call in
-  // the ጥሪዎች rail to hear it again.
+  // Voice is Amharic only: the recorded male clip for the number plays first,
+  // then the remote clip, then device speech. Used for the automatic
+  // announcements while numbers are being called.
   const playCall = (number) => {
     if (!number) return;
-    const url = voiceFiles[`num_${number}`];
-    if (url) {
-      try {
-        audioRef.current?.pause();
-        stopSpeaking();
-        stopCallAudio();
-        audioRef.current = new Audio(url);
-        audioRef.current.play().catch(() => {});
-        return;
-      } catch {
-        /* fall through to speech */
-      }
-    }
-    // No uploaded recording: use an installed Amharic voice when available,
-    // otherwise stream Amharic audio for the call.
-    if (pickAmharicVoice()) {
-      speakCall(number);
-      return;
-    }
-    playRemoteCall(number, () => speakCall(number));
+    stopCallAudio();
+    stopSpeaking();
+    playCallClip(number, () => playRemoteCall(number, () => speakCall(number)));
   };
 
   useEffect(() => {
@@ -190,12 +164,13 @@ export default function GameScreen({
     if (lastPlayed.current === `${game.id}:${game.lastCalled}`) return;
     lastPlayed.current = `${game.id}:${game.lastCalled}`;
     playCall(game.lastCalled);
-  }, [game?.lastCalled, game?.id, voiceOn, voiceAvailable, voiceFiles]);
+  }, [game?.lastCalled, game?.id, voiceOn, voiceAvailable]);
 
   // Mobile browsers only allow speech after a user gesture; warm the engine up
   // once so later automated calls are not silently dropped.
   useEffect(() => {
     const unlock = () => {
+      preloadCallClips();
       try {
         const warm = new SpeechSynthesisUtterance(' ');
         warm.volume = 0;
@@ -210,22 +185,12 @@ export default function GameScreen({
 
   useEffect(() => {
     if (voiceOn) return;
-    try {
-      audioRef.current?.pause();
-    } catch {
-      /* ignore */
-    }
     stopSpeaking();
     stopCallAudio();
   }, [voiceOn]);
 
   useEffect(
     () => () => {
-      try {
-        audioRef.current?.pause();
-      } catch {
-        /* ignore */
-      }
       stopSpeaking();
       stopCallAudio();
     },
@@ -239,33 +204,59 @@ export default function GameScreen({
   const windowOpen = isWaiting && selectionMs > 0;
   const mySlots = you?.slots || [];
   const mySlotSet = new Set(mySlots);
+
+  const pickSlot = async (slot) => {
+    if (pendingPicks.has(slot)) return;
+    setPendingPicks((prev) => new Set(prev).add(slot));
+    try {
+      await onPick?.(slot);
+    } finally {
+      setPendingPicks((prev) => {
+        const next = new Set(prev);
+        next.delete(slot);
+        return next;
+      });
+    }
+  };
   const takenSet = useMemo(() => new Set(game?.takenCards || []), [game?.takenCards]);
   const perCard = game?.stake || stake || 0;
   const spent = you?.spent || 0;
   const feeRate = Math.min(1, Math.max(0, Number(me?.config?.platformFeeRate ?? 0.2)));
-  // Pool already includes what this player paid, so the estimate is the pool
-  // plus the next card's net contribution.
-  const estimatedWin = Math.floor((game?.prizePool || 0) + perCard * (1 - feeRate));
+  // The pot is recalculated on every pick: each taken card number adds one
+  // stake and the platform fee is removed. This is the "game money" shown
+  // live while players are selecting numbers.
+  const cardsInRound = game?.takenCards?.length || 0;
+  const livePool = Math.floor(cardsInRound * perCard * (1 - feeRate));
+  // The real pool wins over the bot-inclusive pot, so the advertised prize and
+  // the amount in the winner popup always agree. A round with no real stakes
+  // (bots only) falls back to the pot every card in play forms.
+  const poolDisplay = game?.prizePool || livePool || 0;
+  const estimatedWin = Math.floor(poolDisplay + perCard * (1 - feeRate));
 
   return (
     <div className="game-screen">
       <div className="round-strip">
-        <span className={`status-pill ${game?.status?.toLowerCase() || ''}`}>
-          {isWaiting ? 'ዙር ክፍት' : isCalling ? 'በቀጥታ' : ended ? 'ተጠናቅቋል' : 'በመገናኘት ላይ'}
-        </span>
+        {!isWaiting && (
+          <span className={`status-pill ${game?.status?.toLowerCase() || ''}`}>
+            {isCalling ? 'በቀጥታ' : ended ? 'ተጠናቅቋል' : 'በመገናኘት ላይ'}
+          </span>
+        )}
+        <span className="call-count-chip">ጥሪ {game?.drawNumber || 0}/75</span>
         <span className="game-id-chip">የጨዋታ መለያ #{game?.id ?? '—'}</span>
         <span className="muted">
           {you ? `${you.cards?.length > 1 ? 'ካርዶች' : 'ካርድ'} ተገዝቷል` : 'መልካም እድል!'}
         </span>
-        <button
-          type="button"
-          className="icon-voice"
-          onClick={onToggleVoice}
-          disabled={!voiceAvailable}
-          title="የድምጽ ማስታወቂያ"
-        >
-          {voiceOn ? '🔊' : '🔇'}
-        </button>
+        <span className="voice-actions">
+          <button
+            type="button"
+            className="icon-voice"
+            onClick={onToggleVoice}
+            disabled={!voiceAvailable}
+            title="የድምጽ ማስታወቂያ"
+          >
+            {voiceOn ? '🔊' : '🔇'}
+          </button>
+        </span>
       </div>
 
       {!windowOpen && (
@@ -294,16 +285,12 @@ export default function GameScreen({
           <span className="call-rail-title">ጥሪዎች</span>
           {callHistory.length ? (
             callHistory.map((n) => (
-              <button
-                type="button"
+              <span
                 key={n}
-                className={`call-chip replay ${game?.lastCalled === n ? 'current' : ''}`}
-                onClick={() => playCall(n)}
-                title="ድምጽ አጫውት"
-                aria-label={`${callLabel(n)} ድምጽ አጫውት`}
+                className={`call-chip ${game?.lastCalled === n ? 'current' : ''}`}
               >
                 {callLabel(n)}
-              </button>
+              </span>
             ))
           ) : (
             <span className="call-chip idle">--</span>
@@ -316,7 +303,6 @@ export default function GameScreen({
         <div className="join-panel">
           <div className="join-head">
             <div>
-              <p className="eyebrow">እያንዳንዱ ካርድ {etb(perCard)} ETB · 1 – {maxCards}</p>
               <h2>
                 {windowOpen
                   ? `የመምረጫ ጊዜ በ ${countdown(selectionMs)}`
@@ -326,7 +312,7 @@ export default function GameScreen({
             </div>
             <div className="pool-badge">
               <span>የሽልማት ገንዘብ</span>
-              <strong>{etb(game?.prizePool)} ETB</strong>
+              <strong>{etb(poolDisplay)} ETB</strong>
             </div>
           </div>
 
@@ -349,11 +335,11 @@ export default function GameScreen({
             <div className="card-picker-wrap">
               <div className="picker-head">
                 <h4>የካርድ ቁጥር ይምረጡ</h4>
-                <span>{mySlots.length ? `${mySlots.length} ተመርጠዋል` : 'ካርድ ይግዙ'}</span>
+                {mySlots.length ? <span>{mySlots.length} ተመርጠዋል</span> : null}
               </div>
               <div className="card-picker" role="group" aria-label="የካርድ ቁጥሮች 1 እስከ 432">
                 {Array.from({ length: maxCards }, (_, i) => i + 1).map((slot) => {
-                  const mine = mySlotSet.has(slot);
+                  const mine = mySlotSet.has(slot) || pendingPicks.has(slot);
                   const taken = takenSet.has(slot) && !mine;
                   return (
                     <button
@@ -361,7 +347,7 @@ export default function GameScreen({
                       type="button"
                       className={`pick-cell ${mine ? 'mine' : ''} ${taken ? 'taken' : ''}`}
                       disabled={taken || busy}
-                      onClick={() => onPick(slot)}
+                      onClick={() => pickSlot(slot)}
                       aria-label={taken ? `ካርድ ${slot} ተመርጧል` : `ካርድ ${slot} ይግዙ`}
                     >
                       {slot}
@@ -398,7 +384,7 @@ export default function GameScreen({
               <div className="call-timer amharic">
                 ቀጣዩ ቁጥር በ <strong>{seconds(game?.nextCallInMs)} ሰከንድ</strong>
                 <span className="bingo-hint">
-                  መግቢያ {etb(you.spent || 0)} ETB · ሽልማት {etb(game?.prizePool)} ETB
+                  መግቢያ {etb(you.spent || 0)} ETB · ሽልማት {etb(poolDisplay)} ETB
                 </span>
                 {you.hasBingo && <span className="bingo-hint">መስመር ሙሉ ነው — ይጠይቁ!</span>}
                 {you.blocked && <span className="blocked-hint">የተሳሳተ ጥያቄ። በዚህ ዙር ማመልከት አይችሉም።</span>}
@@ -406,7 +392,7 @@ export default function GameScreen({
             </>
           ) : (
             <div className="waiting-note amharic">
-              ይህ ዙር በቀጥታ እየተካሄደ ነው። ለቀጣዩ ዙር ካርድ ይግዙ።
+              ይህ ዙር በቀጥታ እየተካሄደ ነው። ለቀጣዩ ዙር ይዘጋጁ፡፡
             </div>
           )}
         </div>
@@ -440,13 +426,16 @@ export default function GameScreen({
                             key={col}
                             className={`bingo-cell ${marked ? 'marked' : ''} ${selected ? 'selected' : ''} ${n === 0 ? 'free' : ''}`}
                           >
-                            {n === 0 ? '★' : n}
+                            {n === 0 ? 'F' : n}
                           </span>
                         );
                       })}
                     </div>
                   ))}
-                  <div className="bingo-card-foot">ካርድ #{you.slots?.[index] ?? index + 1}</div>
+                  <div className="bingo-card-foot">
+                    <span>ካርድ #{you.slots?.[index] ?? index + 1}</span>
+                    <span className="card-win">ሽልማት {etb(poolDisplay)} ETB</span>
+                  </div>
                 </div>
               );
             })}

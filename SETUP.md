@@ -1,4 +1,4 @@
-# Africa Bingo — Setup Steps
+# Ethio Bingo — Setup Steps
 
 Everything needed to run the app locally and open it as a real Telegram Mini App.
 Commands are **bash** (Git Bash on Windows). Run them from the repository root.
@@ -111,7 +111,7 @@ you can test joining rounds, deposits and withdrawals before touching Telegram.
 
 1. Open [@BotFather](https://t.me/BotFather) in Telegram.
 2. Send `/newbot`.
-3. Choose a display name, e.g. `Africa Bingo`.
+3. Choose a display name, e.g. `Ethio Bingo`.
 4. Choose a username ending in `bot`, e.g. `EthioBingoBot`.
 5. BotFather replies with a token like `123456789:AAE-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`.
 
@@ -172,10 +172,10 @@ Use the printed `https://....ngrok-free.app` URL the same way.
 
 1. Send `/newapp`.
 2. Pick your bot.
-3. Title: `Africa Bingo`; short description; upload a 640×360 image.
+3. Title: `Ethio Bingo`; short description; upload a 640×360 image.
 4. **Web App URL:** the tunnel URL from step 7 (no trailing path needed).
 5. Optional menu button — `/setmenubutton` → pick bot → URL = tunnel URL → button text `Play Bingo`.
-6. Optional commands — `/setcommands` → `start - Open Africa Bingo`.
+6. Optional commands — `/setcommands` → `start - Open Ethio Bingo`.
 
 ---
 

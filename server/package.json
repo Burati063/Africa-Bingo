@@ -11,6 +11,7 @@
     "prisma:generate": "prisma generate",
     "seed": "node prisma/seed.js",
     "smoke": "node scripts/smoke.js",
+    "loadtest": "node scripts/loadtest.js",
     "test": "node --test"
   },
   "dependencies": {

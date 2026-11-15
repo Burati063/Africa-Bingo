@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { etb, seconds } from '../format.js';
 import { useToast } from '../components/Toast.jsx';
@@ -43,10 +43,7 @@ export default function GameControl({ token }) {
   const [botName, setBotName] = useState('Lucky Bot');
   const [userSearch, setUserSearch] = useState('');
   const [users, setUsers] = useState([]);
-  const [voiceFiles, setVoiceFiles] = useState([]);
-  const [voiceTarget, setVoiceTarget] = useState('num_1');
   const [saving, setSaving] = useState(false);
-  const fileRef = useRef(null);
   const toast = useToast();
 
   async function loadSettings() {
@@ -59,17 +56,8 @@ export default function GameControl({ token }) {
     }
   }
 
-  async function loadVoice() {
-    try {
-      setVoiceFiles(await api('/api/admin/voice', { token }));
-    } catch (err) {
-      toast(err.message, 'error');
-    }
-  }
-
   useEffect(() => {
     loadSettings();
-    loadVoice();
     const loadGame = () =>
       api('/api/admin/game/state', { token })
         .then(setGame)
@@ -159,37 +147,6 @@ export default function GameControl({ token }) {
       });
       setBroadcastResult(result);
       toast(result.simulated ? 'Broadcast simulated (no bot token configured).' : `Sent to ${result.sent} users.`);
-    } catch (err) {
-      toast(err.message, 'error');
-    }
-  }
-
-  async function uploadVoice(event) {
-    event.preventDefault();
-    const file = fileRef.current?.files?.[0];
-    if (!file) {
-      toast('Choose an audio file first.', 'error');
-      return;
-    }
-    const data = new FormData();
-    data.append('file', file);
-    if (voiceTarget.startsWith('num_')) data.append('number', voiceTarget.replace('num_', ''));
-    else data.append('key', voiceTarget);
-    try {
-      await api('/api/admin/voice', { token, method: 'POST', formData: data });
-      fileRef.current.value = '';
-      toast('Voice file uploaded.');
-      await loadVoice();
-    } catch (err) {
-      toast(err.message, 'error');
-    }
-  }
-
-  async function deleteVoice(id) {
-    if (!window.confirm('Delete this voice file?')) return;
-    try {
-      await api(`/api/admin/voice/${id}`, { token, method: 'DELETE' });
-      await loadVoice();
     } catch (err) {
       toast(err.message, 'error');
     }
@@ -502,6 +459,9 @@ export default function GameControl({ token }) {
                 placeholder="https://…/banner.jpg"
               />
             </label>
+            {broadcastImage ? (
+              <img className="broadcast-preview" src={broadcastImage} alt="Broadcast preview" />
+            ) : null}
             <button type="submit" className="btn primary" disabled={!broadcast.trim()}>
               Send broadcast
             </button>
@@ -515,49 +475,6 @@ export default function GameControl({ token }) {
           </form>
         </section>
       </div>
-
-      <section className="panel">
-        <div className="section-title">
-          <h3>Voice files</h3>
-          <span className="muted small">One-time recorded audio for numbers and announcements</span>
-        </div>
-        <form className="voice-upload" onSubmit={uploadVoice}>
-          <label className="field">
-            <span>Target</span>
-            <select value={voiceTarget} onChange={(event) => setVoiceTarget(event.target.value)}>
-              {Array.from({ length: 75 }, (_, i) => i + 1).map((n) => (
-                <option key={n} value={`num_${n}`}>
-                  Number {n}
-                </option>
-              ))}
-              <option value="bingo">Announcement: Bingo!</option>
-              <option value="game_start">Announcement: Game starting</option>
-            </select>
-          </label>
-          <input ref={fileRef} type="file" accept="audio/*" />
-          <button type="submit" className="btn primary">
-            Upload voice
-          </button>
-        </form>
-        <div className="voice-list">
-          {voiceFiles.length === 0 && (
-            <p className="muted small">
-              No voice files yet. Upload Amharic recordings for numbers 1–75 (mp3/ogg) and they will play on the player app.
-            </p>
-          )}
-          {voiceFiles.map((file) => (
-            <div className="voice-row" key={file.id}>
-              <span className="badge gold">{file.label}</span>
-              <a href={file.fileUrl} target="_blank" rel="noreferrer" className="muted small">
-                {file.key}
-              </a>
-              <button type="button" className="link-btn danger" onClick={() => deleteVoice(file.id)}>
-                Delete
-              </button>
-            </div>
-          ))}
-        </div>
-      </section>
     </div>
   );
 }

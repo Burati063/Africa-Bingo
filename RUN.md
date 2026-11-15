@@ -1,4 +1,4 @@
-# Running Africa Bingo (local + Telegram Mini App)
+# Running Ethio Bingo (local + Telegram Mini App)
 
 Step-by-step instructions to run the player Mini App, admin panel and agent dashboard, and to open
 the app inside Telegram.
@@ -194,11 +194,11 @@ PUBLIC_URL=https://random-words-1234.trycloudflare.com
 
 ### 7.3 Register the Mini App with BotFather
 
-1. `/newapp` → choose your bot → title `Africa Bingo` → description → upload a 640×360 image.
+1. `/newapp` → choose your bot → title `Ethio Bingo` → description → upload a 640×360 image.
 2. **Web App URL:** your tunnel URL (`https://random-words-1234.trycloudflare.com`).
 3. Optional: `/setmenubutton` → choose the bot → URL `https://random-words-1234.trycloudflare.com`
    → button text `Play Bingo`. The app then opens from the chat menu button.
-4. Optional: `/setcommands` → `start - Open Africa Bingo`.
+4. Optional: `/setcommands` → `start - Open Ethio Bingo`.
 
 ### 7.4 Test inside Telegram
 

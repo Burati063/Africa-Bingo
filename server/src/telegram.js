@@ -31,7 +31,7 @@ function miniAppUrl(startParam) {
 function openAppMarkup(startParam) {
   const url = miniAppUrl(startParam);
   if (!/^https:\/\//i.test(url)) return undefined;
-  return { inline_keyboard: [[{ text: '🎱 Open Africa Bingo', url }]] };
+  return { inline_keyboard: [[{ text: '🎱 Open Ethio Bingo', url }]] };
 }
 
 function cleanPhone(value) {
@@ -66,7 +66,7 @@ async function handleStart(message) {
   if (user?.phone) {
     await telegramApi('sendMessage', {
       chat_id: chatId,
-      text: `እንኳን ደህና መጡ ወደ Africa Bingo! 🎱\n\nWelcome back to Africa Bingo!`,
+      text: `እንኳን ደህና መጡ ወደ Ethio Bingo! 🎱\n\nWelcome back to Ethio Bingo!`,
       reply_markup: openAppMarkup(startParam),
     });
     return;
@@ -75,9 +75,9 @@ async function handleStart(message) {
   await telegramApi('sendMessage', {
     chat_id: chatId,
     text:
-      'እንኳን ደህና መጡ ወደ Africa Bingo! 🎱\n\n' +
+      'እንኳን ደህና መጡ ወደ Ethio Bingo! 🎱\n\n' +
       'ለመመዝገብ የስልክ ቁጥርዎን ያጋሩ። ከታች ያለውን አዝራር ይጫኑ።\n\n' +
-      'Welcome to Africa Bingo! Tap the button below to share your phone number and finish registration.',
+      'Welcome to Ethio Bingo! Tap the button below to share your phone number and finish registration.',
     reply_markup: {
       keyboard: [[{ text: '📱 Share phone number / ስልክ ቁጥር አጋራ', request_contact: true }]],
       resize_keyboard: true,
@@ -121,8 +121,8 @@ async function handleContact(message) {
   await telegramApi('sendMessage', {
     chat_id: chatId,
     text:
-      '✅ ስልክ ቁጥርዎ ተመዝግቧል። ወደ Africa Bingo ለመግባት ከታች ያለውን ይጫኑ።\n\n' +
-      '✅ Your phone number is registered. Tap below to open Africa Bingo.',
+      '✅ ስልክ ቁጥርዎ ተመዝግቧል። ወደ Ethio Bingo ለመግባት ከታች ያለውን ይጫኑ።\n\n' +
+      '✅ Your phone number is registered. Tap below to open Ethio Bingo.',
     reply_markup: openAppMarkup(startParam),
   });
 }

@@ -4,7 +4,7 @@ import { dt, etb, txLabel, txSign } from '../format.js';
 import { useToast } from '../components/Toast.jsx';
 
 const TELEBIRR_STEPS = [
-  '1የ Telebirr አካውንት: 0972449537 - Leul',
+  '1የ Telebirr አካውንት',
   '2ከላይ ባለው የ Telebirr አካውንት ገንዘቡን ያስገቡ',
   '3ገንዘቡን ከላካችሁ በኋላ Telebirr የክፍያ ማረጋገጫ (receipt) ሊንክ ይደርሳችኋል',
   '4የደረሳችሁን የክፍያ ማረጋገጫ (receipt) ሊንክ ሙሉውን ኮፒ(copy) በማድረግ ከታች ባለው Verify Your Payment ማስገቢያ ላይ ፔስት(paste) በማድረግ Verify & add funds ይጫኑ',
@@ -74,16 +74,6 @@ export default function WalletScreen({ me, token, refreshMe }) {
   }
 
   const steps = TELEBIRR_STEPS;
-  const accountNumber = '0972449537';
-
-  async function copyAccount() {
-    try {
-      await navigator.clipboard.writeText(accountNumber);
-      toast('Account number copied.');
-    } catch {
-      toast('Copy failed — select the number manually.', 'error');
-    }
-  }
 
   const hasHistory = transactions.length > 0;
 
@@ -95,7 +85,7 @@ export default function WalletScreen({ me, token, refreshMe }) {
           {etb(me?.user?.balance)} <span>ETB</span>
         </div>
         <div className="balance-sub">
-          <span>Africa Bingo player account</span>
+          <span>Ethio Bingo player account</span>
         </div>
         {me?.pendingDeposits > 0 && (
           <div className="notice">You have {me.pendingDeposits} deposit(s) waiting for manual review.</div>
@@ -123,9 +113,6 @@ export default function WalletScreen({ me, token, refreshMe }) {
         <div className="instructions">
           <div className="instructions-head">
             <h4>Telebirr Payment Instructions</h4>
-            <button type="button" className="copy-btn" onClick={copyAccount}>
-              Copy account
-            </button>
           </div>
           {steps.map((step) => (
             <p key={step} className="amharic-step">

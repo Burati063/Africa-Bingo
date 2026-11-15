@@ -1,0 +1,80 @@
+# Production stack for a single free Oracle Cloud / VPS instance.
+# Caddy terminates HTTPS for the Telegram Mini App and proxies WebSockets.
+#
+#   cp server/.env.example .env      # fill in DOMAIN, JWT_SECRET, bot token
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Player app: https://$DOMAIN/ · Admin: https://$DOMAIN/admin · Agent: https://$DOMAIN/agent
+services:
+  bingo:
+    build: .
+    restart: unless-stopped
+    expose:
+      - '4000'
+    environment:
+      PORT: '4000'
+      NODE_ENV: production
+      NODE_OPTIONS: '--max-old-space-size=2048'
+      DATABASE_URL: file:/data/prod.db
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+      PUBLIC_URL: ${PUBLIC_URL:-https://localhost}
+      CORS_ORIGIN: ${CORS_ORIGIN:-https://localhost}
+      # Always false in production: only signed Telegram initData is accepted.
+      DEV_MODE: 'false'
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@bingo.et}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin@12345}
+      AGENT_EMAIL: ${AGENT_EMAIL:-agent@bingo.et}
+      AGENT_PASSWORD: ${AGENT_PASSWORD:-Agent@12345}
+      DEPOSIT_TELEBIRR_ACCOUNT: ${DEPOSIT_TELEBIRR_ACCOUNT:-}
+      DEPOSIT_TELEBIRR_NAME: ${DEPOSIT_TELEBIRR_NAME:-}
+      DEPOSIT_CBE_ACCOUNT: ${DEPOSIT_CBE_ACCOUNT:-}
+      DEPOSIT_CBE_NAME: ${DEPOSIT_CBE_NAME:-}
+    volumes:
+      - bingo-data:/data
+      - bingo-uploads:/app/server/uploads
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:4000/api/health']
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      bingo:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+volumes:
+  bingo-data:
+  bingo-uploads:
+  caddy-data:
+  caddy-config:

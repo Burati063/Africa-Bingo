@@ -6,7 +6,7 @@ export default function Logo({ size = 40, className = '' }) {
       src="/logo.svg"
       width={size}
       height={size}
-      alt="Africa Bingo"
+      alt="Ethio Bingo"
       className={`brand-logo ${className}`}
       draggable={false}
     />

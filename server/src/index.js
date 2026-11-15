@@ -75,6 +75,20 @@ app.use((err, _req, res, _next) => {
 const server = http.createServer(app);
 const io = new SocketServer(server, {
   cors: { origin: corsOrigins.length ? corsOrigins : true },
+  // Tuned for 500+ concurrent Telegram players: raw WebSocket frames, no
+  // per-message deflate (CPU on phones is the bottleneck), longer ping window
+  // and short connection recovery after a mobile network blip.
+  serveClient: false,
+  transports: ['websocket', 'polling'],
+  perMessageDeflate: false,
+  httpCompression: false,
+  maxHttpBufferSize: 1e6,
+  pingInterval: 25000,
+  pingTimeout: 20000,
+  connectionStateRecovery: {
+    maxDisconnectionDuration: 2 * 60 * 1000,
+    skipMiddlewares: true,
+  },
 });
 setIO(io);
 

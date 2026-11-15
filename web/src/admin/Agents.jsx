@@ -9,6 +9,8 @@ export default function Agents({ token }) {
   const [search, setSearch] = useState('');
   const [users, setUsers] = useState([]);
   const [promote, setPromote] = useState({ userId: '', email: '', password: '' });
+  const [mode, setMode] = useState('promote');
+  const [create, setCreate] = useState({ name: '', phone: '', email: '', password: '' });
   const [adjust, setAdjust] = useState({ amount: '', reason: '' });
   const [busy, setBusy] = useState(false);
   const toast = useToast();
@@ -81,6 +83,21 @@ export default function Agents({ token }) {
     }
   }
 
+  async function submitCreate(event) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      const result = await api('/api/admin/agents/create', { token, method: 'POST', body: create });
+      toast(`Agent created. Login: ${result.login.email}`);
+      setCreate({ name: '', phone: '', email: '', password: '' });
+      await load();
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submitAdjust(event) {
     event.preventDefault();
     if (!detail) return;
@@ -113,58 +130,122 @@ export default function Agents({ token }) {
     <div className="agents-tab">
       <section className="panel">
         <div className="section-title">
-          <h3>Promote a player to agent</h3>
+          <h3>{mode === 'create' ? 'Create a new agent' : 'Promote a player to agent'}</h3>
           <span className="badge">Permanent referral attribution</span>
         </div>
-        <form className="promote-form" onSubmit={submitPromote}>
-          <label className="field">
-            <span>Find player</span>
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Name, username or Telegram ID"
-            />
-          </label>
-          <label className="field">
-            <span>Select player</span>
-            <select
-              value={promote.userId}
-              onChange={(event) => setPromote((prev) => ({ ...prev, userId: event.target.value }))}
-              required
-            >
-              <option value="">Choose…</option>
-              {users.map((user) => (
-                <option key={user.id} value={user.id}>
-                  {user.firstName || user.username} · {user.telegramId} · {etb(user.balance)} ETB
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            <span>Agent login email</span>
-            <input
-              type="email"
-              value={promote.email}
-              onChange={(event) => setPromote((prev) => ({ ...prev, email: event.target.value }))}
-              required
-              placeholder="agent@example.com"
-            />
-          </label>
-          <label className="field">
-            <span>Temporary password</span>
-            <input
-              type="text"
-              minLength={8}
-              value={promote.password}
-              onChange={(event) => setPromote((prev) => ({ ...prev, password: event.target.value }))}
-              required
-              placeholder="min 8 characters"
-            />
-          </label>
-          <button type="submit" className="btn primary" disabled={busy || !promote.userId}>
-            {busy ? 'Creating…' : 'Create agent account'}
+        <div className="sub-tabs">
+          <button
+            type="button"
+            className={mode === 'promote' ? 'active' : ''}
+            onClick={() => setMode('promote')}
+          >
+            Promote existing player
           </button>
-        </form>
+          <button
+            type="button"
+            className={mode === 'create' ? 'active' : ''}
+            onClick={() => setMode('create')}
+          >
+            Create new agent
+          </button>
+        </div>
+
+        {mode === 'promote' ? (
+          <form className="promote-form" onSubmit={submitPromote}>
+            <label className="field">
+              <span>Find player</span>
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Name, username or Telegram ID"
+              />
+            </label>
+            <label className="field">
+              <span>Select player</span>
+              <select
+                value={promote.userId}
+                onChange={(event) => setPromote((prev) => ({ ...prev, userId: event.target.value }))}
+                required
+              >
+                <option value="">Choose…</option>
+                {users.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.firstName || user.username} · {user.telegramId} · {etb(user.balance)} ETB
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Agent login email</span>
+              <input
+                type="email"
+                value={promote.email}
+                onChange={(event) => setPromote((prev) => ({ ...prev, email: event.target.value }))}
+                required
+                placeholder="agent@example.com"
+              />
+            </label>
+            <label className="field">
+              <span>Temporary password</span>
+              <input
+                type="text"
+                minLength={8}
+                value={promote.password}
+                onChange={(event) => setPromote((prev) => ({ ...prev, password: event.target.value }))}
+                required
+                placeholder="min 8 characters"
+              />
+            </label>
+            <button type="submit" className="btn primary" disabled={busy || !promote.userId}>
+              {busy ? 'Creating…' : 'Create agent account'}
+            </button>
+          </form>
+        ) : (
+          <form className="promote-form" onSubmit={submitCreate}>
+            <label className="field">
+              <span>Agent full name</span>
+              <input
+                value={create.name}
+                onChange={(event) => setCreate((prev) => ({ ...prev, name: event.target.value }))}
+                required
+                placeholder="Full name"
+              />
+            </label>
+            <label className="field">
+              <span>Phone number (optional)</span>
+              <input
+                value={create.phone}
+                onChange={(event) => setCreate((prev) => ({ ...prev, phone: event.target.value }))}
+                placeholder="09xxxxxxxx"
+                inputMode="tel"
+              />
+            </label>
+            <label className="field">
+              <span>Agent login email</span>
+              <input
+                type="email"
+                value={create.email}
+                onChange={(event) => setCreate((prev) => ({ ...prev, email: event.target.value }))}
+                required
+                placeholder="agent@example.com"
+              />
+            </label>
+            <label className="field">
+              <span>Temporary password</span>
+              <input
+                type="text"
+                minLength={8}
+                value={create.password}
+                onChange={(event) => setCreate((prev) => ({ ...prev, password: event.target.value }))}
+                required
+                placeholder="min 8 characters"
+              />
+            </label>
+            <button type="submit" className="btn primary" disabled={busy}>
+              {busy ? 'Creating…' : 'Create agent account'}
+            </button>
+          </form>
+        )}
       </section>
 
       <section className="panel">

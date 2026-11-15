@@ -361,15 +361,33 @@ async function finishRound(triggerPlayer, reason) {
     realWinnerCount: realWinners.length,
   });
 
-  // Everyone is shown the same way: name, last four digits and the winning
-  // card. Bot wins are intentionally indistinguishable from player wins.
+  // The winner popup advertises the round's pot, which counts every card in
+  // play (bots hold a card too). This is display only: real winners are still
+  // paid `share` of the real stakes, because bots never pay or receive money.
+  // A bot shows the real pot when players paid into it; in a round with no real
+  // stakes it shows its share of the advertised pot so the popup never reads
+  // 0.00 when a bot wins.
+  const displayPool = computePayout({
+    stakes: round.players.reduce(
+      (sum, p) => sum + (p.isBot ? round.stake : Math.max(0, Number(p.paidStake) || 0)),
+      0,
+    ),
+    platformFeeRate: settings.platformFeeRate,
+    realWinnerCount: 0,
+  }).pool;
+
+  // Everyone is shown the same way: name, last four digits, the winning card
+  // and the amount they won. Bot wins are intentionally indistinguishable from
+  // player wins.
   round.winners = winners.map((p) => {
     const winning = winnerCardFor(p, round.called);
     return {
       name: p.name,
       phone4: phone4From(p.phone),
       phoneMasked: maskPhone(p.phone),
-      amount: p.isBot ? pool : share,
+      amount: p.isBot
+        ? pool || Math.floor(displayPool / Math.max(1, winners.length))
+        : share,
       cardNumber: winning?.cardNumber || 1,
       card: winning?.card || null,
       line: winning?.line || null,

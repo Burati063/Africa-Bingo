@@ -23,6 +23,16 @@ const loginLimiter = rateLimit({
   message: { error: 'ብዙ የመግቢያ ሙከራዎች። ከአንድ ደቂቃ በኋላ እንደገና ይሞክሩ።' },
 });
 
+// Self-service agent password resets are also limited, because the registered
+// phone number is the only proof of ownership we ask for.
+const resetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'ብዙ የይለፍ ቃል ማደስ ሙከራዎች። ከ15 ደቂቃ በኋላ እንደገና ይሞክሩ።' },
+});
+
 function publicUser(user) {
   return {
     id: user.id,
@@ -123,6 +133,51 @@ router.post(
         referralCode: account.agent?.referralCode || null,
       },
     });
+  }),
+);
+
+// An agent who forgot the password can set a new one from the login screen by
+// proving the email and the phone number stored on the agent's account.
+router.post(
+  '/staff/forgot-password',
+  resetLimiter,
+  asyncHandler(async (req, res) => {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const phone = String(req.body?.phone || '').replace(/\D/g, '');
+    const password = String(req.body?.password || '');
+    if (!email || !phone || !password) {
+      throw new AppError('Email, registered phone number and a new password are required.');
+    }
+    if (password.length < 8) throw new AppError('Password must be at least 8 characters.');
+
+    const account = await prisma.staffAccount.findUnique({
+      where: { email },
+      include: { agent: { include: { user: true } } },
+    });
+    if (!account || account.role !== 'agent' || !account.agent) {
+      throw new AppError('No agent login matches that email.', 404);
+    }
+    if (!account.agent.isActive) throw new AppError('This agent account is disabled.', 403);
+
+    const registered = String(account.agent.user?.phone || '').replace(/\D/g, '');
+    if (!registered || registered.slice(-9) !== phone.slice(-9)) {
+      throw new AppError(
+        'That phone number does not match this agent account. Ask an admin to reset the password.',
+        403,
+      );
+    }
+
+    await prisma.staffAccount.update({
+      where: { id: account.id },
+      data: { passwordHash: await bcrypt.hash(password, 10) },
+    });
+    await prisma.adminAction.create({
+      data: {
+        actionType: 'agent_password_reset',
+        details: `agent:${account.agentId} self-service via phone match`,
+      },
+    });
+    res.json({ ok: true, email: account.email });
   }),
 );
 

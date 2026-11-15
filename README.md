@@ -1,4 +1,4 @@
-# Africa Bingo — Telegram Mini App
+# Ethio Bingo — Telegram Mini App
 
 A complete Ethiopian 75-ball bingo platform: a Telegram Mini App for players, a real-time
 server-authoritative game engine, an admin panel for game/payment/agent control, and an agent
@@ -62,7 +62,7 @@ npm start          # http://localhost:4000
 │   │   └── seed.js               # defaults, admin, demo agent
 │   ├── scripts/smoke.js          # end-to-end HTTP test (20 checks)
 │   ├── test/payments.test.js     # parser + card/line tests
-│   ├── uploads/voice/            # uploaded Amharic recordings (served at /uploads)
+│   ├── uploads/                  # uploaded media (served at /uploads)
 │   └── src
 │       ├── index.js              # Express + Socket.IO + static web build
 │       ├── engine.js             # rounds, calling, bots, claims, payouts
@@ -78,7 +78,7 @@ npm start          # http://localhost:4000
 │       └── routes
 │           ├── auth.js           # player login, staff login
 │           ├── player.js         # game, wallet, referral
-│           ├── admin.js          # control, analytics, users, withdrawals, agents, voice
+│           ├── admin.js          # control, analytics, users, withdrawals, agents
 │           └── agent.js          # agent dashboard API
 └── web
     ├── index.html                # Telegram WebApp SDK
@@ -133,8 +133,9 @@ Money is stored as **integer santim** (1 ETB = 100 santim) everywhere.
   CBE deposit methods with the exact Amharic instructions, then receipt-link verification.
 - **Withdrawal:** the exact Amharic manual-withdrawal notice, amount, bank, account number, holder
   name, live summary panel (`PENDING APPROVAL`, `15 - 30 Minutes`), submit button, history.
-- **Voice:** static audio files fetched from `/api/voice-files`, played for each called number;
-  toggle in the game header (also globally disableable by admins).
+- **Voice:** recorded male Amharic announcements for every called number, served as MP3 clips so
+  every device sounds the same; device speech and a remote stream remain as fallbacks. Toggle in
+  the game header (also globally disableable by admins).
 - **Agent tab** appears for agent-role players and links to the agent dashboard.
 
 All Amharic strings from the specification are used verbatim in `WalletScreen.jsx` /
@@ -222,13 +223,13 @@ referral downline and ledger.
 - **Game control:** live round state (status, players, calls, pool, timer, forced winner, real
   players and their bingo state), game settings (stake, bots 0–50, wait time, call interval, round
   delay, fee %, auto-start, global voice, min withdrawal, auto-verify limit), start round now,
-  audited next-winner override (specific player or a bot), Telegram broadcast, voice upload/list.
+  audited next-winner override (specific player or a bot), Telegram broadcast with an optional image.
 - **Users:** search, balances, referral info, expandable detail with ledger/games/referrals,
   audited balance adjustments, ban/unban.
 - **Withdrawals:** player/agent tabs with approve/reject + notes, plus deposit manual review.
 - **Agents:** promote, list, enable/disable, adjust, full downline and ledger.
 - **Audit log:** every sensitive action (settings, overrides, adjustments, approvals, broadcasts,
-  voice changes, round creation/winner override usage).
+  round creation/winner override usage).
 
 ---
 
@@ -256,16 +257,16 @@ All authenticated routes use `Authorization: Bearer <JWT>`.
 | POST | `/api/wallet/deposit/verify` `{sms}` (legacy, off by default) |
 | POST | `/api/wallet/withdrawals` `{amount,bank,accountNumber,accountName}` |
 | GET | `/api/my-referral` |
-| GET | `/api/voice-files` (public) |
 
 ### Admin (`/api/admin`, role `admin`)
 `GET /overview`, `GET/PATCH-ish /settings` (`PUT`), `GET /users`, `GET /users/:id`,
 `POST /users/:id/adjust`, `POST /users/:id/ban`, `GET /withdrawals`,
 `POST /withdrawals/:id/approve|reject`, `GET /deposits`, `POST /deposits/:id/approve|reject`,
 `GET /agent-withdrawals`, `POST /agent-withdrawals/:id/approve|reject`,
-`GET /agents`, `GET /agents/:id`, `POST /agents/promote`, `POST /agents/:id/toggle`,
-`POST /agents/:id/adjust`, `GET /game/state`, `POST /game/start`, `POST /game/next-winner`,
-`POST /broadcast`, `GET/POST /voice`, `DELETE /voice/:id`, `GET /audit`, `GET /export?type=users|transactions|withdrawals|agents`.
+`GET /agents`, `GET /agents/:id`, `POST /agents/promote`, `POST /agents/create`,
+`POST /agents/:id/toggle`, `POST /agents/:id/adjust`, `GET /game/state`, `POST /game/start`,
+`POST /game/next-winner`, `POST /broadcast`, `GET /audit`,
+`GET /export?type=users|transactions|withdrawals|agents`.
 
 ### Agent (`/api/agent`, role `agent`)
 `GET /me`, `GET /referrals`, `GET /earnings`, `GET /withdrawals`, `POST /withdrawals`.
@@ -330,33 +331,39 @@ docker compose up --build -d
 ```
 
 The container runs `prisma db push`, seeds admin/agent idempotently, then starts the API and serves
-the built web app on port 4000. SQLite data and uploaded voice files live in named volumes.
+the built web app on port 4000. SQLite data and uploaded media live in named volumes.
 Set `DEV_MODE=false`, a strong `JWT_SECRET`, `PUBLIC_URL`, `TELEGRAM_BOT_TOKEN` and
 `TELEGRAM_BOT_USERNAME`. Put the container behind HTTPS (Caddy/nginx/Cloudflare) — Telegram requires
 HTTPS for Mini Apps.
 
 ---
 
-## 13. Voice files
+## 13. Voice (Amharic, male)
 
-Admins upload static recordings per number (`num_1`…`num_75`) or announcement (`bingo`,
-`game_start`) in **Game Control → Voice files**. The player app maps the last called number to
-`num_<n>` and plays it when voice is on. When a number has no uploaded recording, the app uses an
-installed Amharic voice (`am-ET`) via the Web Speech API; if the device has no Amharic voice (common
-in mobile WebViews), it streams the Amharic call audio instead. Players can also tap any call in the
-`ጥሪዎች` rail to hear it again.
-Uploads accept mp3/ogg/wav/m4a up to 5 MB
-and are stored in `server/uploads/voice`, served from `/uploads/voice/...`. The repository ships with
-no audio assets — record the Amharic numbers once and upload them.
+Every call is a recorded male Amharic clip: `web/public/audio/calls/1.mp3` … `75.mp3` plus
+`start.mp3` and `bingo.mp3`. Playback needs no speech engine, so phones with no Amharic voice
+(common in Telegram's Android WebView) sound exactly like every other device. Clips are preloaded
+after the first tap for instant calls, and the first 75 are cached as `<audio>` elements.
+
+`web/src/voice.js` falls back in two steps if a clip is missing or blocked: the remote Amharic
+stream at a lowered pitch, then device speech synthesis at pitch `0.45`. Players can tap any call in
+the `ጥሪዎች` rail to hear it again.
+
+To regenerate the clips with an Azure Speech key (voice `am-ET-AmehaNeural`, free F0 tier):
+
+```bash
+cd web
+AZURE_SPEECH_KEY=... AZURE_SPEECH_REGION=eastus npm run voice:generate
+```
 
 ---
 
 ## 14. Verification performed
 
-- `npm --workspace server test` — 22/22 (payout split, card/line logic, agent commission rules,
+- `npm --workspace server test` — 33/33 (payout split, card/line logic, agent commission rules,
   receipt-link parsing and review routing).
 - `npm --workspace web run build` — Vite production build succeeds.
-- `npm --workspace server run smoke` — 22/22 end-to-end checks against a live server: health, admin
+- `npm --workspace server run smoke` — 23/23 end-to-end checks against a live server: health, admin
   login, settings update, referral registration, receipt link sent to review, duplicate receipt
   rejection, admin approval credit, agent deposit bonus, waiting round, join/stake deduction, Bingo
   claim, win payout, ledger entries, agent gameplay commission, admin analytics.

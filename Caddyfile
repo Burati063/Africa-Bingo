@@ -1,0 +1,6 @@
+# Caddy gets a free HTTPS certificate automatically and proxies WebSockets.
+# DOMAIN comes from the .env file used by docker-compose.prod.yml.
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy bingo:4000
+}

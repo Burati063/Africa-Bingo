@@ -393,6 +393,54 @@ router.post(
 );
 
 router.post(
+  '/agents/create',
+  asyncHandler(async (req, res) => {
+    const name = String(req.body?.name || '').trim().slice(0, 80);
+    const phone = String(req.body?.phone || '').trim().replace(/[^\d+]/g, '').slice(0, 20) || null;
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+    if (name.length < 2) throw new AppError('Enter the agent full name.');
+    if (!email.includes('@')) throw new AppError('Enter a valid login email for the agent.');
+    if (password.length < 8) throw new AppError('Agent password must be at least 8 characters.');
+    if (await prisma.staffAccount.findUnique({ where: { email } })) {
+      throw new AppError('This login email is already in use.');
+    }
+
+    const user = await prisma.user.create({
+      data: {
+        telegramId: `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        firstName: name,
+        phone,
+        role: 'agent',
+      },
+    });
+    const agent = await prisma.agent.create({
+      data: { userId: user.id, referralCode: await uniqueReferralCode(name) },
+    });
+    await prisma.staffAccount.create({
+      data: {
+        email,
+        passwordHash: await bcrypt.hash(password, 10),
+        role: 'agent',
+        agentId: agent.id,
+        name,
+      },
+    });
+    await prisma.adminAction.create({
+      data: {
+        staffId: req.staff.sid,
+        actionType: 'agent_create',
+        details: `user:${user.id} agent:${agent.id} email:${email}`,
+      },
+    });
+    res.json({
+      agent: { ...agent, referralLink: referralLinkFor(agent.referralCode) },
+      login: { email, password },
+    });
+  }),
+);
+
+router.post(
   '/agents/:id/toggle',
   asyncHandler(async (req, res) => {
     const agent = await prisma.agent.findUnique({ where: { id: Number(req.params.id) } });

@@ -1,16 +1,22 @@
 import React from 'react';
 import { etb } from '../format.js';
-import { callLabel } from '../bingo.js';
 import Logo from '../components/Logo.jsx';
 
-export default function TopBar({ me, game, onRefresh, refreshing, view = 'game', onNavigate }) {
+export default function TopBar({ me, game, you, onRefresh, refreshing, view = 'game', onNavigate }) {
+  const feeRate = Math.min(1, Math.max(0, Number(me?.config?.platformFeeRate ?? 0.2)));
+  const players = Number(game?.playersCount || 0);
+  const stakeSantim = Number(game?.stake || 0);
+  // Derash = what players paid minus the platform (system) fee.
+  const derash = Math.floor(players * stakeSantim * (1 - feeRate));
+  const calledCount = game?.drawNumber ?? game?.calledNumbers?.length ?? 0;
+
   return (
     <header className="topbar">
       <div className="brand-row">
         <div className="brand-lockup">
           <Logo size={38} />
           <div>
-            <strong className="brand-title">Africa Bingo</strong>
+            <strong className="brand-title">Ethio Bingo</strong>
             <span className="brand-sub">የጨዋታ መለያ #{game?.id ?? '—'}</span>
           </div>
         </div>
@@ -52,12 +58,12 @@ export default function TopBar({ me, game, onRefresh, refreshing, view = 'game',
         <div className="stat derash-stat">
           <span>ደራሽ</span>
           <strong>
-            {etb(game?.prizePool)} <small>ETB</small>
+            {etb(derash)} <small>ETB</small>
           </strong>
         </div>
         <div className="stat">
           <span>ተጫዋቾች</span>
-          <strong>{game?.playersCount ?? 0}</strong>
+          <strong>{players}</strong>
         </div>
         <div className="stat">
           <span>መግቢያ ክፍያ</span>
@@ -67,9 +73,7 @@ export default function TopBar({ me, game, onRefresh, refreshing, view = 'game',
         </div>
         <div className="stat call-stat">
           <span>ጥሪ</span>
-          <strong className={game?.lastCalled ? 'live' : ''}>
-            {game?.lastCalled ? callLabel(game.lastCalled) : '--'}
-          </strong>
+          <strong>{calledCount}/75</strong>
         </div>
       </div>
     </header>

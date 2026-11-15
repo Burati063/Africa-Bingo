@@ -110,7 +110,7 @@ export default function AdminApp() {
         <div className="sidebar-brand">
           <Logo size={38} />
           <div>
-            <strong>Africa Bingo</strong>
+            <strong>Ethio Bingo</strong>
             <span>Admin Panel</span>
           </div>
         </div>

@@ -15,6 +15,7 @@ RUN npm --workspace server exec prisma generate
 FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+ENV NODE_OPTIONS="--max-old-space-size=2048"
 RUN apk add --no-cache openssl
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/web/dist ./web/dist

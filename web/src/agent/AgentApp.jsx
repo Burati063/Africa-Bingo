@@ -34,6 +34,7 @@ export default function AgentApp() {
   const [withdrawals, setWithdrawals] = useState([]);
   const [form, setForm] = useState({ amount: '', bank: '', accountNumber: '', accountName: '' });
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
   const toast = useToast();
 
   useEffect(() => {
@@ -67,7 +68,9 @@ export default function AgentApp() {
       setReferrals(refs);
       setEarnings(ern);
       setWithdrawals(wds);
+      setError('');
     } catch (err) {
+      setError(err.message);
       toast(err.message, 'error');
     }
   }
@@ -94,7 +97,7 @@ export default function AgentApp() {
     return (
       <StaffLogin
         title="Agent Dashboard"
-        subtitle="Track referrals and commissions for Africa Bingo."
+        subtitle="Track referrals and commissions for Ethio Bingo."
         expectedRole="agent"
         onLogin={login}
         alternate={
@@ -109,7 +112,14 @@ export default function AgentApp() {
   if (!data) {
     return (
       <div className="center-screen">
-        <div className="loader">Loading agent dashboard…</div>
+        <div className="panel">
+          {error ? <div className="form-error">{error}</div> : <div className="loader">Loading agent dashboard…</div>}
+          {error && (
+            <button type="button" className="btn primary" onClick={loadAll}>
+              Try again
+            </button>
+          )}
+        </div>
       </div>
     );
   }
@@ -162,7 +172,7 @@ export default function AgentApp() {
   }
 
   const marketingMessages = [
-    `🎱 Africa Bingo — play live bingo and win real ETB!\nJoin with my link: ${agent.referralLink}`,
+    `🎱 Ethio Bingo — play live bingo and win real ETB!\nJoin with my link: ${agent.referralLink}`,
     `🎉 20 ETB stake, real cash prizes every round. Register with my invite link and start playing: ${agent.referralLink}`,
     `🇪🇹 ኢትዮ ቢንጎ! በቴሌግራም ላይ ቢንጎ ተጫውተው ገንዘብ ያሸንፉ። በዚህ ሊንክ ይቀላቀሉ፡ ${agent.referralLink}`,
   ];
@@ -173,7 +183,7 @@ export default function AgentApp() {
         <div className="sidebar-brand">
           <Logo size={38} />
           <div>
-            <strong>Africa Bingo</strong>
+            <strong>Ethio Bingo</strong>
             <span>Agent Dashboard</span>
           </div>
         </div>
