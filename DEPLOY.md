@@ -26,8 +26,8 @@ players can use with real money. Work through the phases in order.
 | Health | `GET /api/health`, Docker healthcheck configured |
 | Ops | Admin audit log, CSV exports, manual deposit/withdrawal approval |
 
-Known gaps to close before scaling beyond one server: PostgreSQL, PDF/KYC policy, payment-provider
-webhooks, 2FA for staff, off-site backups, external uptime monitoring.
+Known gaps to close before scaling beyond one server: PDF/KYC policy, payment-provider webhooks,
+2FA for staff, off-site backup copies, external uptime monitoring.
 
 ---
 

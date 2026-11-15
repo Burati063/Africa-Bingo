@@ -5,8 +5,11 @@ server-authoritative game engine, an admin panel for game/payment/agent control,
 dashboard with referral commissions.
 
 Stack: **React + Vite** (player app, admin, agent), **Node.js + Express + Socket.IO**, **Prisma**
-(SQLite locally, PostgreSQL-ready), **JWT + Telegram initData** auth, server-side RNG / win
-validation / wallet ledger.
+(PostgreSQL in production, SQLite for zero-config local dev), **JWT + Telegram initData** auth,
+server-side RNG / win validation / wallet ledger.
+
+Docs: [`DEPLOY-RENDER.md`](./DEPLOY-RENDER.md) (free, no credit card) · [`DEPLOY.md`](./DEPLOY.md)
+(VPS / Oracle) · [`SETUP.md`](./SETUP.md) · [`RUN.md`](./RUN.md).
 
 ---
 
@@ -53,14 +56,23 @@ npm start          # http://localhost:4000
 
 ```
 .
-├── Dockerfile / docker-compose.yml / .dockerignore
+├── Dockerfile / docker-compose.yml / docker-compose.prod.yml / .dockerignore
+├── render.yaml                   # Render blueprint (free plan, no card)
+├── .github/workflows/            # scheduled Neon backup
+├── deploy
+│   ├── oracle-bootstrap.sh       # one-command VPS install (Docker, Caddy, pg_dump cron)
+│   └── neon-backup.sh            # pg_dump export with retention pruning
 ├── package.json                  # npm workspaces + dev/build scripts
 ├── server
 │   ├── .env.example
 │   ├── prisma
-│   │   ├── schema.prisma         # full database schema
+│   │   ├── schema.prisma         # full database schema (PostgreSQL)
+│   │   ├── migrations/           # versioned SQL, applied on every boot
 │   │   └── seed.js               # defaults, admin, demo agent
-│   ├── scripts/smoke.js          # end-to-end HTTP test (20 checks)
+│   ├── scripts
+│   │   ├── startup.mjs           # container boot: migrate -> seed -> server
+│   │   ├── schema-sqlite.mjs     # generates the SQLite schema used by local dev
+│   │   └── smoke.js              # end-to-end HTTP test (20 checks)
 │   ├── test/payments.test.js     # parser + card/line tests
 │   ├── uploads/                  # uploaded media (served at /uploads)
 │   └── src
@@ -318,26 +330,51 @@ Socket.IO Redis adapter + a shared store; stake/win movements are already transa
   cannot be overwritten, downline names masked for agents.
 - **Operational gaps to close before real money:** provider webhook verification instead of SMS
   pattern matching, KYC/AML policy, device/IP referral-fraud checks, 2FA for admins, audit-log
-  retention, HTTPS-only deployment, and backup/restore for the ledger.
+  retention, HTTPS-only deployment, and off-site storage for the ledger backups.
 
 ---
 
-## 12. Docker deployment
+## 12. Deployment
 
-See **[DEPLOY.md](./DEPLOY.md)** for the full production roadmap (VPS, HTTPS, Telegram setup,
-backups, monitoring and scale path). Quick version:
+Two supported targets, each documented end to end:
+
+| Target | Credit card | Guide |
+|--------|-------------|-------|
+| **Render free + Neon Postgres** (no VPS at all) | Not needed | [`DEPLOY-RENDER.md`](./DEPLOY-RENDER.md) |
+| **VPS / Oracle Always Free** (Docker + Caddy HTTPS) | Needed for Oracle/AWS/GCP | [`DEPLOY.md`](./DEPLOY.md) |
+
+Both run the same image and the same boot sequence: `server/scripts/startup.mjs` waits for
+PostgreSQL, applies `prisma migrate deploy` with retries, seeds idempotently, then starts the API and
+serves the built web app.
+
+Docker (VPS):
 
 ```bash
-cp server/.env.example .env   # fill in real secrets
+cp server/.env.example .env   # set JWT_SECRET, POSTGRES_PASSWORD, PUBLIC_URL, bot token
 docker compose up --build -d
 ```
 
-The container applies pending Prisma migrations, seeds admin/agent idempotently, then starts the API and serves
-the built web app on port 4000. PostgreSQL data and uploaded media live in named volumes —
-`docker-compose.yml` starts a `postgres:16-alpine` service alongside the app.
-Set `DEV_MODE=false`, a strong `JWT_SECRET`, `PUBLIC_URL`, `TELEGRAM_BOT_TOKEN` and
-`TELEGRAM_BOT_USERNAME`. Put the container behind HTTPS (Caddy/nginx/Cloudflare) — Telegram requires
-HTTPS for Mini Apps.
+`docker-compose.yml` starts `postgres:16-alpine` alongside the app; data lives in the `bingo-pgdata`
+volume and uploads in `bingo-uploads`. `docker-compose.prod.yml` adds Caddy for HTTPS. `render.yaml`
+declares the same service for Render (Docker, free plan, `/api/health` check, 384 MB heap cap).
+
+Set `DEV_MODE=false`, a strong `JWT_SECRET`, a `POSTGRES_PASSWORD`, `PUBLIC_URL`,
+`TELEGRAM_BOT_TOKEN` and `TELEGRAM_BOT_USERNAME`. Telegram only opens Mini Apps over HTTPS.
+
+Operational facts:
+
+- **Health:** `GET /api/health` runs `SELECT 1` and returns `200 {"ok":true,"db":"up"}`, or `503`
+  with `"db":"down"` while PostgreSQL is unreachable. Point uptime monitors and platform health
+  checks at it.
+- **Schema changes:** edit `schema.prisma`, run `npm run db:migrate -- --name <change>` in `server/`,
+  and commit the generated SQL in `prisma/migrations/`. Never edit an applied migration. Local SQLite
+  stays in sync through `npm run db:sqlite`.
+- **Backups:** `deploy/neon-backup.sh` dumps `DATABASE_URL` to a timestamped `.sql.gz` with retention
+  pruning and a Docker fallback when `pg_dump` is missing;
+  `.github/workflows/neon-backup.yml` runs it daily and keeps 14 days of artifacts. On a VPS,
+  `deploy/oracle-bootstrap.sh` installs a nightly `pg_dump` cron.
+- **One instance only:** the game engine keeps rounds in memory, so never enable autoscaling or run
+  two app containers against the same database.
 
 ---
 
@@ -365,6 +402,10 @@ AZURE_SPEECH_KEY=... AZURE_SPEECH_REGION=eastus npm run voice:generate
 
 - `npm --workspace server test` — 33/33 (payout split, card/line logic, agent commission rules,
   receipt-link parsing and review routing).
+- `prisma migrate deploy` against PostgreSQL 16 — fresh database becomes 16 tables, a second run is a
+  no-op, and a pre-migration database is detected (`P3005`) with the exact baseline command.
+- `deploy/neon-backup.sh` — dump validated (header check), retention pruning, and a restore into a
+  fresh database (16 tables, no errors).
 - `npm --workspace web run build` — Vite production build succeeds.
 - `npm --workspace server run smoke` — 23/23 end-to-end checks against a live server: health, admin
   login, settings update, referral registration, receipt link sent to review, duplicate receipt
