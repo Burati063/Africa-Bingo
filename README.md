@@ -290,9 +290,11 @@ Auth via `auth.token` (player JWT). Events emitted by the server:
 - `PlatformSetting` (fees, timers, bot count, commission rates, next winner)
 - `VoiceFile`, `AdminAction`
 
-Local development uses SQLite via `prisma db push`. To scale on PostgreSQL: change
-`provider = "postgresql"` in `schema.prisma`, point `DATABASE_URL` at Postgres, then run
-`npx prisma migrate dev --name init` (or `prisma migrate deploy` in CI).
+The canonical schema targets PostgreSQL. Local development still uses SQLite with no setup:
+`npm run db:sqlite` generates `prisma/schema.sqlite.prisma` from the same models and pushes `dev.db`
+(`npm run setup` and `npm run dev` do it for you). For a real Postgres database, point
+`DATABASE_URL` at it and run `npm run db:push` in `server/`; move to `prisma migrate deploy` once you
+have versioned migrations.
 
 ---
 
@@ -331,7 +333,8 @@ docker compose up --build -d
 ```
 
 The container runs `prisma db push`, seeds admin/agent idempotently, then starts the API and serves
-the built web app on port 4000. SQLite data and uploaded media live in named volumes.
+the built web app on port 4000. PostgreSQL data and uploaded media live in named volumes —
+`docker-compose.yml` starts a `postgres:16-alpine` service alongside the app.
 Set `DEV_MODE=false`, a strong `JWT_SECRET`, `PUBLIC_URL`, `TELEGRAM_BOT_TOKEN` and
 `TELEGRAM_BOT_USERNAME`. Put the container behind HTTPS (Caddy/nginx/Cloudflare) — Telegram requires
 HTTPS for Mini Apps.

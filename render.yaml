@@ -1,0 +1,58 @@
+# Render Blueprint — free plan, no credit card required.
+#
+#   Render Dashboard -> New -> Blueprint -> pick this repo -> Apply
+#
+# Then fill the "sync: false" values once (Neon DATABASE_URL, the public HTTPS
+# URL, bot token, staff passwords). See DEPLOY-RENDER.md for the full walkthrough.
+#
+# Notes
+# - PORT is injected by Render and read by server/src/index.js (falls back to 4000).
+# - Free services sleep after 15 minutes without traffic; DEPLOY-RENDER.md sets up
+#   a free uptime monitor that keeps this one warm within the 750 h/month allowance.
+# - No disk: uploads are ephemeral (only admin voice clips are files).
+services:
+  - type: web
+    name: ethio-bingo
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Free plan has 512 MB RAM; keep the heap well inside it.
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=384
+      - key: DEV_MODE
+        value: "false"
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PUBLIC_URL
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_BOT_USERNAME
+        sync: false
+      - key: ADMIN_EMAIL
+        value: admin@bingo.et
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: AGENT_EMAIL
+        value: agent@bingo.et
+      - key: AGENT_PASSWORD
+        sync: false
+      - key: DEPOSIT_TELEBIRR_ACCOUNT
+        sync: false
+      - key: DEPOSIT_TELEBIRR_NAME
+        sync: false
+      - key: DEPOSIT_CBE_ACCOUNT
+        sync: false
+      - key: DEPOSIT_CBE_NAME
+        sync: false

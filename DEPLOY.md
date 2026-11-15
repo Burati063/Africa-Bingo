@@ -3,6 +3,10 @@
 This is the shortest safe path from the current repository to a live Telegram Mini App that real
 players can use with real money. Work through the phases in order.
 
+> **No credit card / no VPS?** See [DEPLOY-RENDER.md](DEPLOY-RENDER.md) for the Render free-tier
+> path (Docker service + Neon Postgres, no rewrite, no card). The Prisma schema now targets
+> PostgreSQL; local development still uses SQLite via `npm run db:sqlite`.
+
 > **What has to come from you:** a server (VPS) with SSH access, a domain name, a Telegram bot token
 > from @BotFather, and the Telebirr/CBE accounts that receive deposits. The repository and deployment
 > files are ready; the steps below are the part that runs on your infrastructure.
@@ -14,7 +18,7 @@ players can use with real money. Work through the phases in order.
 | Area | State |
 |------|-------|
 | Build | Single Docker image builds the web app and runs the API + Socket.IO server |
-| Data | SQLite in a Docker volume (fine for one instance; Postgres path below) |
+| Data | PostgreSQL 16 in a Docker volume (compose) or managed Postgres (Render/Neon) |
 | Money | Integer santim ledger, atomic balance updates, server-side RNG/win validation |
 | Auth | Telegram `initData` HMAC + JWT, role-scoped admin/agent/player tokens |
 | Game | Server-authoritative rounds; calls, cards, claims and payouts never trust the client |
@@ -45,7 +49,7 @@ sudo DOMAIN=bingo.123-45-67-89.sslip.io \
 It installs Docker, opens only 22/80/443, applies the kernel tuning needed for 1000+ WebSockets,
 writes a production `.env`, builds the stack, waits for `/api/health`, and points the bot's menu
 button at the new HTTPS URL. Re-running it pulls the latest code and restarts without touching the
-`bingo-data` volume.
+`bingo-pgdata` volume.
 
 **No domain?** Use `sslip.io`: if the server IP is `123.45.67.89`, set
 `DOMAIN=bingo.123-45-67-89.sslip.io`. It resolves to that IP for free, and Caddy still gets a real
@@ -96,7 +100,8 @@ DEV_MODE=false
 TELEGRAM_BOT_TOKEN=<token from @BotFather>
 TELEGRAM_BOT_USERNAME=<bot username without @>
 
-DATABASE_URL=file:/data/prod.db
+DATABASE_URL=postgresql://bingo:<POSTGRES_PASSWORD>@db:5432/bingo
+POSTGRES_PASSWORD=<openssl rand -hex 24>
 DEPOSIT_TELEBIRR_ACCOUNT=<your deposit number>
 DEPOSIT_TELEBIRR_NAME=<account holder>
 DEPOSIT_CBE_ACCOUNT=<your CBE account>
@@ -152,7 +157,7 @@ docker compose logs -f bingo      # watch startup, then Ctrl+C
 curl https://bingo.yourdomain.com/api/health
 ```
 
-Data lives in the `bingo-data` volume (`/data/prod.db`) and voice uploads in `bingo-uploads`.
+Data lives in the `bingo-pgdata` volume (PostgreSQL) and voice uploads in `bingo-uploads`.
 On first boot the container creates the schema and seeds the admin account from `.env`.
 
 Log in at `https://bingo.yourdomain.com/admin` with `ADMIN_EMAIL` / `ADMIN_PASSWORD` and immediately
@@ -204,11 +209,13 @@ BASE_URL=https://bingo.yourdomain.com npm run smoke
 **Backups (must have before real money):**
 
 ```bash
-# nightly at 02:00 — database + uploads, kept 14 days
-0 2 * * * docker run --rm -v africa-bingo_bingo-data:/data -v /opt/backups:/backup \
-  alpine tar czf /backup/db-$(date +\%F).tgz -C /data . && \
-  find /opt/backups -name 'db-*.tgz' -mtime +14 -delete
+# nightly at 02:00 — PostgreSQL dump, kept 14 days
+cd /opt/ethio-bingo && docker compose -f docker-compose.prod.yml exec -T db \
+  pg_dump -U bingo bingo | gzip > /opt/backups/db-$(date +\%F).sql.gz
 ```
+
+Put that in a small script (for example `/usr/local/bin/ethio-bingo-backup`) and call it from cron;
+`deploy/oracle-bootstrap.sh` installs exactly that.
 
 Copy `/opt/backups` off the server (object storage or another host). Test a restore quarterly.
 
@@ -217,7 +224,7 @@ Copy `/opt/backups` off the server (object storage or another host). Test a rest
 - External uptime check on `https://bingo.yourdomain.com/api/health` every minute (UptimeRobot,
   BetterStack, or a cron + Telegram alert).
 - `docker compose logs --since 15m` reviewed daily for `[engine]`, `[deposits]`, and 5xx errors.
-- Disk usage alert: SQLite + logs + uploads.
+- Disk usage alert: PostgreSQL data volume + logs + uploads.
 
 **Updates:**
 
@@ -236,9 +243,10 @@ and the audit log.
 
 Do these in order as volume grows:
 
-1. **PostgreSQL** — change `datasource.provider` to `postgresql`, set a Postgres `DATABASE_URL`, add
-   a `postgres` service to Compose, and move to `prisma migrate deploy` (create an initial migration
-   first). Keep nightly `pg_dump` backups.
+1. **PostgreSQL** — done: the schema targets `postgresql`, Compose runs a `postgres:16-alpine`
+   service, and nightly `pg_dump` backups are installed by `deploy/oracle-bootstrap.sh`. Next step is
+   moving from `prisma db push` to versioned `prisma migrate deploy` (create an initial migration
+   first).
 2. **Multi-instance realtime** — move the game engine to a single worker process and add the
    Socket.IO Redis adapter before running more than one app container.
 3. **Payments** — replace receipt scraping with a provider webhook (Telebirr/CBE merchant API) so
@@ -265,7 +273,8 @@ git checkout <last-good-commit>
 docker compose up --build -d
 ```
 
-If the database was damaged, stop the stack, restore the latest backup into the `bingo-data` volume,
+If the database was damaged, stop the stack, restore the latest `db-*.sql.gz` with
+`gunzip -c db-YYYY-MM-DD.sql.gz | docker compose -f docker-compose.prod.yml exec -T db psql -U bingo bingo`,
 and start again. The ledger is the source of truth — never edit balances by hand; use the admin
 adjustment flow so the audit trail stays complete.
 
@@ -281,7 +290,7 @@ Best free choices, in order:
 | **Oracle Cloud Always Free** | 4 ARM cores, 24 GB RAM, 200 GB storage, always on | The real recommendation for a money app | Never sleeps, no credit-card charge, full control. ARM works with the Docker images. |
 | **Fly.io** | Small shared VMs + 160 GB egress | Quick trial | Can scale to 0; set `min_machines_running = 1` so the game engine never sleeps. |
 | **Koyeb** | One small always-on service | Simple demo | Free instance is small; fine for testing, not for 500 players. |
-| **Render / Railway** | Free trial tiers | Preview only | Free Render services sleep, which stops the game engine. Do not use for live rounds. |
+| **Render free + Neon Postgres** | Always-on-capable Docker service, no card | The no-card path | Sleeps after 15 min unless a free uptime monitor pings `/api/health`; no persistent disk. See [DEPLOY-RENDER.md](DEPLOY-RENDER.md). |
 | **Cloudflare Tunnel** | Free HTTPS tunnel | Local/Telegram testing | URL changes on restart; use a named tunnel + free Cloudflare DNS for a stable hostname. |
 
 **Recommended zero-cost production stack:** Oracle Cloud Always Free (Ubuntu 24.04 ARM) + this
@@ -345,7 +354,8 @@ DEV_MODE=false
 PUBLIC_URL=https://bingo.yourdomain.com
 CORS_ORIGIN=https://bingo.yourdomain.com
 JWT_SECRET=<openssl rand -hex 32>
-DATABASE_URL=file:/data/prod.db
+DATABASE_URL=postgresql://bingo:<POSTGRES_PASSWORD>@db:5432/bingo
+POSTGRES_PASSWORD=<openssl rand -hex 24>
 TELEGRAM_BOT_TOKEN=<from @BotFather>
 TELEGRAM_BOT_USERNAME=<bot username without @>
 ADMIN_EMAIL=<real admin email>
@@ -441,7 +451,8 @@ DEV_MODE=false
 PUBLIC_URL=https://bingo.yourdomain.com
 CORS_ORIGIN=https://bingo.yourdomain.com
 JWT_SECRET=<output of: openssl rand -hex 32>
-DATABASE_URL=file:/data/prod.db
+DATABASE_URL=postgresql://bingo:<POSTGRES_PASSWORD>@db:5432/bingo
+POSTGRES_PASSWORD=<output of: openssl rand -hex 24>
 TELEGRAM_BOT_TOKEN=<token from @BotFather>
 TELEGRAM_BOT_USERNAME=<bot username without @>
 ADMIN_EMAIL=<your admin email>
@@ -496,13 +507,22 @@ admin action.
 
 ```bash
 mkdir -p /opt/backups
+cat > /usr/local/bin/ethio-bingo-backup <<'EOF'
+#!/bin/sh
+set -eu
+cd /opt/ethio-bingo
+docker compose -f docker-compose.prod.yml exec -T db pg_dump -U bingo bingo \
+  | gzip > "/opt/backups/db-$(date +%F).sql.gz"
+find /opt/backups -name 'db-*.sql.gz' -mtime +14 -delete
+EOF
+chmod 755 /usr/local/bin/ethio-bingo-backup
 crontab -e
 # add:
-0 2 * * * docker run --rm -v ethio-bingo_bingo-data:/data -v /opt/backups:/backup alpine tar czf /backup/db-$(date +\%F).tgz -C /data . && find /opt/backups -name 'db-*.tgz' -mtime +14 -delete
+0 2 * * * /usr/local/bin/ethio-bingo-backup
 ```
 
-Confirm the volume name with `docker volume ls` (it is prefixed with the project directory name).
-Copy `/opt/backups` off the server, and test a restore once.
+Copy `/opt/backups` off the server, and test a restore once:
+`gunzip -c db-YYYY-MM-DD.sql.gz | docker compose -f docker-compose.prod.yml exec -T db psql -U bingo bingo`.
 
 **Updates:**
 
@@ -523,8 +543,9 @@ upgrade/downgrade incorrectly), do not delete the boot volume, and stay within 1
 
 - **Fly.io** — set `min_machines_running = 1`; free allowances change, so check current pricing.
 - **Koyeb** — one small always-on service; fine for a demo, not 500 players.
-- **Render / Railway free** — they sleep. A sleeping process stops the game engine mid-round. Do not
-  use free sleeping tiers for live money.
+- **Render free** — viable without a card (see [DEPLOY-RENDER.md](DEPLOY-RENDER.md)): one always-warm
+  service, Neon Postgres, and a 5-minute uptime monitor so the engine is not stopped mid-round.
+  Sleeping tiers without a keep-alive are fine for demos only.
 - **Cloudflare Tunnel** — excellent for local testing and a free HTTPS URL, but the quick-tunnel URL
   changes on restart. Use a named tunnel + your domain if you go this route.
 
@@ -536,5 +557,5 @@ upgrade/downgrade incorrectly), do not delete the boot volume, and stay within 1
 | `502` from Caddy | `bingo` container is unhealthy: `docker compose -f docker-compose.prod.yml logs bingo` |
 | Telegram opens a blank page | `PUBLIC_URL`/BotFather URL is wrong, `DEV_MODE=true`, or the container is down |
 | “Could not sign in” in Telegram | `TELEGRAM_BOT_TOKEN` does not belong to the bot whose Mini App you opened |
-| SQLite “database is locked” | Only run one app container; the app already enables WAL and `busy_timeout` |
+| `ECONNREFUSED … 5432` on boot | PostgreSQL is still starting; Compose waits for `pg_isready`, and the app retries the first `db push` on restart |
 | 500 players disconnect | Raise `nofile` (already 65535 in Compose), watch CPU/RAM with `docker stats` |

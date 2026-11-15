@@ -1,12 +1,14 @@
 // Prisma schema. Money is stored as integer santim (1 ETB = 100 santim).
-// SQLite is used for zero-config local development. To move to PostgreSQL,
-// change the provider to "postgresql", set DATABASE_URL and run `prisma migrate`.
+// PostgreSQL is the deployment target (Render/Neon and the VPS docker stack).
+// Local development uses SQLite: `npm run db:sqlite` generates
+// prisma/schema.sqlite.prisma from this file and pushes it to dev.db, so the
+// models below stay the single source of truth for both providers.
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

@@ -14,7 +14,7 @@
 # public IP without buying anything:  bingo.<IP-with-dashes>.sslip.io
 # (for example: 123-45-67-89.sslip.io resolves to 123.45.67.89).
 #
-# Optional env: REPO_URL, BRANCH, INSTALL_DIR, JWT_SECRET, AGENT_EMAIL,
+# Optional env: REPO_URL, BRANCH, INSTALL_DIR, JWT_SECRET, POSTGRES_PASSWORD, AGENT_EMAIL,
 # AGENT_PASSWORD, DEPOSIT_TELEBIRR_ACCOUNT, DEPOSIT_TELEBIRR_NAME,
 # DEPOSIT_CBE_ACCOUNT, DEPOSIT_CBE_NAME.
 #
@@ -33,6 +33,8 @@ DOMAIN="${DOMAIN#https://}"; DOMAIN="${DOMAIN#http://}"; DOMAIN="${DOMAIN%/}"
 BOT_USERNAME="${TELEGRAM_BOT_USERNAME:-}"
 BOT_USERNAME="${BOT_USERNAME#https://t.me/}"; BOT_USERNAME="${BOT_USERNAME#t.me/}"; BOT_USERNAME="${BOT_USERNAME#@}"
 JWT_SECRET="${JWT_SECRET:-$(openssl rand -hex 48)}"
+# Password for the bundled PostgreSQL container; generated once and kept in .env
+POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-$(openssl rand -hex 24)}"
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "Run this with sudo." >&2
@@ -91,7 +93,8 @@ DEV_MODE=false
 PUBLIC_URL=https://$DOMAIN
 CORS_ORIGIN=https://$DOMAIN
 JWT_SECRET=$JWT_SECRET
-DATABASE_URL=file:/data/prod.db
+DATABASE_URL=postgresql://bingo:$POSTGRES_PASSWORD@db:5432/bingo
+POSTGRES_PASSWORD=$POSTGRES_PASSWORD
 TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
 TELEGRAM_BOT_USERNAME=$BOT_USERNAME
 ADMIN_EMAIL=$ADMIN_EMAIL
@@ -136,11 +139,17 @@ for i in $(seq 1 30); do
   sleep 5
 done
 
-log "Nightly database backup (kept 14 days)"
+log "Nightly PostgreSQL backup (kept 14 days)"
 mkdir -p /opt/ethio-bingo-backups
-cat > /etc/cron.d/ethio-bingo-backup <<'EOF'
-0 2 * * * root docker run --rm -v ethio-bingo_bingo-data:/data -v /opt/ethio-bingo-backups:/backup alpine tar czf /backup/db-$(date +\%F).tgz -C /data . && find /opt/ethio-bingo-backups -name 'db-*.tgz' -mtime +14 -delete
+cat > /usr/local/bin/ethio-bingo-backup <<EOF
+#!/bin/sh
+set -eu
+cd "$INSTALL_DIR"
+docker compose -f docker-compose.prod.yml exec -T db pg_dump -U bingo bingo | gzip > "/opt/ethio-bingo-backups/db-\$(date +%F).sql.gz"
+find /opt/ethio-bingo-backups -name 'db-*.sql.gz' -mtime +14 -delete
 EOF
+chmod 755 /usr/local/bin/ethio-bingo-backup
+printf '0 2 * * * root /usr/local/bin/ethio-bingo-backup\n' > /etc/cron.d/ethio-bingo-backup
 chmod 644 /etc/cron.d/ethio-bingo-backup
 echo "backup cron installed (copy /opt/ethio-bingo-backups off the machine regularly)"
 

@@ -1,5 +1,7 @@
 # Production stack for a single free Oracle Cloud / VPS instance.
 # Caddy terminates HTTPS for the Telegram Mini App and proxies WebSockets.
+# PostgreSQL runs in a volume-backed container; the ledger no longer lives in a
+# SQLite file. Set POSTGRES_PASSWORD in .env (see server/.env.example).
 #
 #   cp server/.env.example .env      # fill in DOMAIN, JWT_SECRET, bot token
 #   docker compose -f docker-compose.prod.yml up -d --build
@@ -18,7 +20,7 @@ services:
       PORT: '4000'
       NODE_ENV: production
       NODE_OPTIONS: '--max-old-space-size=2048'
-      DATABASE_URL: file:/data/prod.db
+      DATABASE_URL: postgresql://bingo:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/bingo
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
@@ -36,8 +38,10 @@ services:
       DEPOSIT_TELEBIRR_NAME: ${DEPOSIT_TELEBIRR_NAME:-}
       DEPOSIT_CBE_ACCOUNT: ${DEPOSIT_CBE_ACCOUNT:-}
       DEPOSIT_CBE_NAME: ${DEPOSIT_CBE_NAME:-}
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
-      - bingo-data:/data
       - bingo-uploads:/app/server/uploads
     ulimits:
       nofile:
@@ -51,6 +55,26 @@ services:
       # First boot runs `prisma db push` and the seed, which is slow on ARM.
       start_period: 180s
     stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bingo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: bingo
+    volumes:
+      - bingo-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U bingo -d bingo']
+      interval: 10s
+      timeout: 5s
+      retries: 10
     logging:
       driver: json-file
       options:
@@ -80,7 +104,7 @@ services:
         max-file: '3'
 
 volumes:
-  bingo-data:
+  bingo-pgdata:
   bingo-uploads:
   caddy-data:
   caddy-config:
